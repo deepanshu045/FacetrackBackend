@@ -1,0 +1,43 @@
+# Virtual Environment
+myenv/
+venv/
+env/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.Python
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+!.env.example
+
+# Logs
+*.log
+uvicorn_err*.txt
+uvicorn_out*.txt
+
+# Temporary files
+tmp/
+temp/
+tmp_*.py
+*.tmp
+
+# Database
+backup.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
