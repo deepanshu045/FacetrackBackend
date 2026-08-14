@@ -1,8 +1,6 @@
 import hashlib
 import secrets
-import smtplib
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 
 from sqlalchemy.orm import Session
 
@@ -11,8 +9,9 @@ from app.models.college import College
 from app.models.pending_college_registration import PendingCollegeRegistration
 from app.schemas.auth import AdminCreate
 
-from app.config import FRONTEND_URL, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_SENDER, SMTP_USERNAME
+from app.config import FRONTEND_URL
 from app.security.password import hash_password
+from app.services.email_service import EmailDeliveryError, is_email_configured, send_email
 
 from app.models.admin import Admin
 from app.security.password import verify_password
@@ -77,7 +76,7 @@ def create_college_with_admin(db: Session, registration):
 
 def start_college_registration(db: Session, registration) -> None:
     """Email a verification link without creating a college or admin yet."""
-    if not all([SMTP_USERNAME, SMTP_PASSWORD, SMTP_SENDER]):
+    if not is_email_configured():
         raise RuntimeError("Email verification is not configured on the server.")
 
     slug = registration.college_slug.strip().lower()
@@ -107,21 +106,18 @@ def start_college_registration(db: Session, registration) -> None:
     db.commit()
 
     verification_url = f"{FRONTEND_URL}/verify-college?token={token}"
-    message = EmailMessage()
-    message["Subject"] = "Verify your FaceTrack college registration"
-    message["From"] = SMTP_SENDER
-    message["To"] = email
-    message.set_content(
-        f"Hello {pending.username},\n\n"
-        f"Verify your email to create the FaceTrack workspace for {pending.college_name}:\n"
-        f"{verification_url}\n\n"
-        "This link expires in 24 hours. If you did not request this, you can ignore this email."
-    )
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-            smtp.send_message(message)
-    except (OSError, smtplib.SMTPException) as error:
+        send_email(
+            recipient=email,
+            subject="Verify your FaceTrack college registration",
+            text=(
+                f"Hello {pending.username},\n\n"
+                f"Verify your email to create the FaceTrack workspace for {pending.college_name}:\n"
+                f"{verification_url}\n\n"
+                "This link expires in 24 hours. If you did not request this, you can ignore this email."
+            ),
+        )
+    except EmailDeliveryError as error:
         db.delete(pending)
         db.commit()
         raise RuntimeError("Unable to send the verification email. Please try again later.") from error
