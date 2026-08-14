@@ -18,6 +18,7 @@ from app.api.report import router as report_router
 from app.api.auth import router as auth_router
 from app.api.notification import router as notification_router
 from app.api.public import router as public_router
+from app.api.lecture import router as lecture_router
 
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.admin import Admin
@@ -27,6 +28,8 @@ from app.services.auth_service import create_admin
 from app.security.password import hash_password, verify_password
 from app.config import ABSENCE_CHECK_HOUR, CORS_ORIGINS
 from app.services.absence_notification_service import send_absence_notifications
+from app.models.attendance_summary_notification import AttendanceSummaryNotification
+
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +248,7 @@ app.include_router(report_router)
 app.include_router(auth_router)
 app.include_router(notification_router)
 app.include_router(public_router)
+app.include_router(lecture_router)
 
 @app.get("/")
 def home():

@@ -18,3 +18,8 @@ class College(Base):
 
     admins = relationship("Admin", back_populates="college")
     students = relationship("Student", back_populates="college")
+    lectures = relationship(
+    "Lecture",
+    back_populates="college",
+    cascade="all, delete-orphan"
+)

@@ -37,10 +37,20 @@ class Student(Base):
         return self.face_encoding is not None or bool(self.image_path)
 
     attendance = relationship(
-        "Attendance",
-        back_populates="student",
-        cascade="all, delete"
-    )
+    "Attendance",
+    back_populates="student",
+    cascade="all, delete-orphan"
+)
+    absence_notifications = relationship(
+    "AbsenceNotification",
+    back_populates="student",
+    cascade="all, delete-orphan"
+)
+    attendance_summary_notifications = relationship(
+    "AttendanceSummaryNotification",
+    back_populates="student",
+    cascade="all, delete-orphan"
+)
 
     college = relationship("College", back_populates="students")
 

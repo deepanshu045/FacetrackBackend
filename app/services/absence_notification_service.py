@@ -2,67 +2,269 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.models.absence_notification import AbsenceNotification
-from app.models.attendance import Attendance
 from app.models.student import Student
-from app.services.email_service import EmailDeliveryError, is_email_configured, send_email
+from app.models.lecture import Lecture
+from app.models.attendance import Attendance
+from app.models.absence_notification import AbsenceNotification
+
+from app.services.email_service import send_email, EmailDeliveryError
 
 
-def send_absence_notifications(db: Session, attendance_date: date) -> int:
-    """Email students without attendance after the daily cutoff.
-
-    A database record is written only after an email is sent successfully, which
-    prevents duplicate emails when the server restarts.
+def send_absence_notifications(
+    db: Session,
+    attendance_date: date
+):
     """
-    if not is_email_configured():
-        return 0
+    Send one collective attendance report per student
+    for the specified date.
+    """
 
-    absent_students = (
-        db.query(Student)
-        .outerjoin(
-            Attendance,
-            (Attendance.student_id == Student.id)
-            & (Attendance.attendance_date == attendance_date),
+    # ---------------------------------------------------------
+    # 1. Get all lectures for the date
+    # ---------------------------------------------------------
+
+    lectures = (
+        db.query(Lecture)
+        .filter(
+            Lecture.lecture_date == attendance_date
         )
-        .filter(Attendance.id.is_(None), Student.email.isnot(None))
+        .order_by(
+            Lecture.start_time.asc()
+        )
         .all()
     )
 
-    sent_count = 0
-    for student in absent_students:
+    if not lectures:
+        return
+
+    # ---------------------------------------------------------
+    # 2. Get colleges having lectures today
+    # ---------------------------------------------------------
+
+    college_ids = list({
+        lecture.college_id
+        for lecture in lectures
+    })
+
+    students = (
+        db.query(Student)
+        .filter(
+            Student.college_id.in_(college_ids),
+            Student.email.isnot(None)
+        )
+        .all()
+    )
+
+    # ---------------------------------------------------------
+    # 3. Process each student
+    # ---------------------------------------------------------
+
+    for student in students:
+
+        student_lectures = [
+            lecture
+            for lecture in lectures
+            if lecture.college_id == student.college_id
+        ]
+
+        if not student_lectures:
+            continue
+
+        # -----------------------------------------------------
+        # 4. Check if today's report was already sent
+        # -----------------------------------------------------
+
         already_sent = (
             db.query(AbsenceNotification)
             .filter(
                 AbsenceNotification.student_id == student.id,
-                AbsenceNotification.attendance_date == attendance_date,
+                AbsenceNotification.attendance_date == attendance_date
             )
             .first()
         )
+
         if already_sent:
             continue
+
+        # -----------------------------------------------------
+        # 5. Calculate attendance
+        # -----------------------------------------------------
+
+        report_rows = []
+
+        present_count = 0
+        absent_count = 0
+
+        for lecture in student_lectures:
+
+            attendance = (
+                db.query(Attendance)
+                .filter(
+                    Attendance.student_id == student.id,
+                    Attendance.lecture_id == lecture.id
+                )
+                .first()
+            )
+
+            if attendance:
+                status = "Present"
+                present_count += 1
+            else:
+                status = "Absent"
+                absent_count += 1
+
+            report_rows.append(
+                {
+                    "subject": lecture.subject,
+                    "start_time": lecture.start_time.strftime("%I:%M %p"),
+                    "end_time": lecture.end_time.strftime("%I:%M %p"),
+                    "status": status,
+                }
+            )
+
+        total_lectures = len(report_rows)
+
+        if total_lectures == 0:
+            continue
+
+        percentage = round(
+            (present_count / total_lectures) * 100,
+            2
+        )
+
+        # -----------------------------------------------------
+        # 6. Build plain-text email
+        # -----------------------------------------------------
+
+        subject = (
+            f"Daily Attendance Report - "
+            f"{attendance_date.strftime('%d %B %Y')}"
+        )
+
+        text = build_attendance_email(
+            student=student,
+            attendance_date=attendance_date,
+            report_rows=report_rows,
+            present_count=present_count,
+            absent_count=absent_count,
+            total_lectures=total_lectures,
+            percentage=percentage,
+        )
+
+        # -----------------------------------------------------
+        # 7. Send using EXISTING Resend service
+        # -----------------------------------------------------
 
         try:
             send_email(
                 recipient=student.email,
-                subject=f"Absence notice - {attendance_date.isoformat()}",
-                text=(
-                    f"Hello {student.name},\n\n"
-                    f"Our records show that your attendance was not marked by 11:00 AM on "
-                    f"{attendance_date.strftime('%d %B %Y')}. You have been marked absent.\n\n"
-                    "If this is incorrect, please contact your administrator.\n\n"
-                    "FaceTrack Attendance System"
-                ),
+                subject=subject,
+                text=text,
             )
+
         except EmailDeliveryError:
+            # Do not create a notification record if
+            # Resend failed.
             continue
 
-        db.add(
-            AbsenceNotification(
-                student_id=student.id,
-                attendance_date=attendance_date,
-            )
-        )
-        db.commit()
-        sent_count += 1
+        # -----------------------------------------------------
+        # 8. Record successful delivery
+        # -----------------------------------------------------
 
-    return sent_count
+        notification = AbsenceNotification(
+            student_id=student.id,
+            attendance_date=attendance_date,
+        )
+
+        db.add(notification)
+        db.commit()
+
+
+def build_attendance_email(
+    student,
+    attendance_date,
+    report_rows,
+    present_count,
+    absent_count,
+    total_lectures,
+    percentage,
+):
+    """
+    Build the plain-text daily attendance email.
+    """
+
+    lines = []
+
+    lines.append("FACE TRACK")
+    lines.append("=" * 50)
+    lines.append("")
+    lines.append("Daily Attendance Report")
+    lines.append("=" * 50)
+    lines.append("")
+
+    lines.append(
+        f"Student   : {student.name}"
+    )
+
+    lines.append(
+        f"Roll No   : {student.roll_no}"
+    )
+
+    lines.append(
+        f"Date      : {attendance_date.strftime('%d %B %Y')}"
+    )
+
+    lines.append("")
+    lines.append("-" * 70)
+
+    lines.append(
+        f"{'Subject':<25}"
+        f"{'Time':<25}"
+        f"{'Status'}"
+    )
+
+    lines.append("-" * 70)
+
+    for row in report_rows:
+
+        time = (
+            f"{row['start_time']} - "
+            f"{row['end_time']}"
+        )
+
+        lines.append(
+            f"{row['subject']:<25}"
+            f"{time:<25}"
+            f"{row['status']}"
+        )
+
+    lines.append("-" * 70)
+    lines.append("")
+
+    lines.append("Today's Summary")
+    lines.append("-" * 30)
+
+    lines.append(
+        f"Total Lectures : {total_lectures}"
+    )
+
+    lines.append(
+        f"Present        : {present_count}"
+    )
+
+    lines.append(
+        f"Absent         : {absent_count}"
+    )
+
+    lines.append(
+        f"Attendance     : {percentage}%"
+    )
+
+    lines.append("")
+    lines.append("=" * 50)
+    lines.append("")
+    lines.append(
+        "This is an automatically generated email from FaceTrack."
+    )
+
+    return "\n".join(lines)

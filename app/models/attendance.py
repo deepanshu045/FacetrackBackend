@@ -1,11 +1,12 @@
-from sqlalchemy import Column
-from sqlalchemy import Integer
-from sqlalchemy import ForeignKey
-from sqlalchemy import Date
-from sqlalchemy import Time
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Integer,
+    DateTime,
+    ForeignKey,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
-
+from sqlalchemy.sql import func
 
 from app.database.base import Base
 
@@ -13,33 +14,46 @@ from app.database.base import Base
 class Attendance(Base):
     __tablename__ = "attendance"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
 
     student_id = Column(
         Integer,
         ForeignKey("students.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
-    attendance_date = Column(
-        Date,
-        nullable=False
+    lecture_id = Column(
+        Integer,
+        ForeignKey("lectures.id"),
+        nullable=False,
+        index=True
     )
 
-    attendance_time = Column(
-        Time,
+    marked_at = Column(
+        DateTime,
+        server_default=func.now(),
         nullable=False
     )
 
     student = relationship(
-    "Student",
-    back_populates="attendance"
-)
+        "Student",
+        back_populates="attendance"
+    )
+
+    lecture = relationship(
+        "Lecture",
+        back_populates="attendance"
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "student_id",
-            "attendance_date",
-            name="unique_daily_attendance"
+            "lecture_id",
+            name="unique_student_lecture_attendance"
         ),
     )
