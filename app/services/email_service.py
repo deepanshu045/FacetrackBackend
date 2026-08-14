@@ -1,8 +1,13 @@
 """Shared Resend email delivery helpers."""
 
+import logging
+
 import resend
 
 from app.config import RESEND_API_KEY, RESEND_SENDER
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmailDeliveryError(RuntimeError):
@@ -29,4 +34,5 @@ def send_email(*, recipient: str, subject: str, text: str) -> None:
             }
         )
     except Exception as error:
+        logger.exception("Resend rejected the email delivery request.")
         raise EmailDeliveryError("Resend was unable to send the email.") from error

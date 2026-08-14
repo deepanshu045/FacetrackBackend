@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database.dependency import get_db
 from app.dependencies.auth import get_current_admin
 from app.models.admin import Admin
+from app.models.absence_notification import AbsenceNotification
 from app.models.student import Student
 from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
 from app.services.student_service import create_student
@@ -109,6 +110,12 @@ def delete_student(
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
 
+    # Attendance is deleted by Student.attendance's ORM cascade. Absence
+    # notifications also reference the student, but are not an ORM relationship,
+    # so remove them explicitly before deleting the student.
+    db.query(AbsenceNotification).filter(
+        AbsenceNotification.student_id == student.id
+    ).delete(synchronize_session=False)
     db.delete(student)
     db.commit()
 
