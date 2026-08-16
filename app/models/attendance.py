@@ -1,12 +1,6 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    DateTime,
-    ForeignKey,
-    UniqueConstraint,
-)
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
 from app.database.base import Base
 
@@ -35,7 +29,7 @@ class Attendance(Base):
     )
 
     marked_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
     )
@@ -54,6 +48,6 @@ class Attendance(Base):
         UniqueConstraint(
             "student_id",
             "lecture_id",
-            name="unique_student_lecture_attendance"
+            name="uq_attendance_student_lecture"
         ),
     )

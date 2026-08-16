@@ -5,23 +5,23 @@ from sqlalchemy.orm import Session
 from app.models.student import Student
 from app.models.lecture import Lecture
 from app.models.attendance import Attendance
-from app.models.absence_notification import AbsenceNotification
-
+from app.models.attendance_summary_notification import (
+    AttendanceSummaryNotification,
+)
 from app.services.email_service import send_email, EmailDeliveryError
 
 
-def send_absence_notifications(
+def send_attendance_summary_notifications(
     db: Session,
-    attendance_date: date
+    attendance_date: date,
 ):
     """
-    Send one collective attendance report per student
-    for the specified date.
+    Send one collective attendance summary per student
+    for all lectures on the specified date.
     """
 
-    # ---------------------------------------------------------
-    # 1. Get all lectures for the date
-    # ---------------------------------------------------------
+ 
+    #  Get all lectures for the date
 
     lectures = (
         db.query(Lecture)
@@ -41,23 +41,22 @@ def send_absence_notifications(
     # 2. Get colleges having lectures today
     # ---------------------------------------------------------
 
-    college_ids = list({
+    college_ids = {
         lecture.college_id
         for lecture in lectures
-    })
+    }
 
     students = (
         db.query(Student)
         .filter(
             Student.college_id.in_(college_ids),
-            Student.email.isnot(None)
+            Student.email.isnot(None),
         )
         .all()
     )
 
-    # ---------------------------------------------------------
     # 3. Process each student
-    # ---------------------------------------------------------
+    
 
     for student in students:
 
@@ -70,15 +69,16 @@ def send_absence_notifications(
         if not student_lectures:
             continue
 
-        # -----------------------------------------------------
-        # 4. Check if today's report was already sent
-        # -----------------------------------------------------
+        
+        # 4. Check whether today's summary was already sent
+        
 
         already_sent = (
-            db.query(AbsenceNotification)
+            db.query(AttendanceSummaryNotification)
             .filter(
-                AbsenceNotification.student_id == student.id,
-                AbsenceNotification.attendance_date == attendance_date
+                AttendanceSummaryNotification.student_id == student.id,
+                AttendanceSummaryNotification.summary_date
+                == attendance_date,
             )
             .first()
         )
@@ -86,9 +86,7 @@ def send_absence_notifications(
         if already_sent:
             continue
 
-        # -----------------------------------------------------
-        # 5. Calculate attendance
-        # -----------------------------------------------------
+        # 5. Calculate attendance lecture by lecture
 
         report_rows = []
 
@@ -101,7 +99,7 @@ def send_absence_notifications(
                 db.query(Attendance)
                 .filter(
                     Attendance.student_id == student.id,
-                    Attendance.lecture_id == lecture.id
+                    Attendance.lecture_id == lecture.id,
                 )
                 .first()
             )
@@ -116,8 +114,12 @@ def send_absence_notifications(
             report_rows.append(
                 {
                     "subject": lecture.subject,
-                    "start_time": lecture.start_time.strftime("%I:%M %p"),
-                    "end_time": lecture.end_time.strftime("%I:%M %p"),
+                    "start_time": lecture.start_time.strftime(
+                        "%I:%M %p"
+                    ),
+                    "end_time": lecture.end_time.strftime(
+                        "%I:%M %p"
+                    ),
                     "status": status,
                 }
             )
@@ -129,15 +131,14 @@ def send_absence_notifications(
 
         percentage = round(
             (present_count / total_lectures) * 100,
-            2
+            2,
         )
 
-        # -----------------------------------------------------
-        # 6. Build plain-text email
-        # -----------------------------------------------------
+        # 6. Build email
+        
 
         subject = (
-            f"Daily Attendance Report - "
+            "FaceTrack - Daily Attendance Report - "
             f"{attendance_date.strftime('%d %B %Y')}"
         )
 
@@ -152,7 +153,7 @@ def send_absence_notifications(
         )
 
         # -----------------------------------------------------
-        # 7. Send using EXISTING Resend service
+        # 7. Send email through Resend
         # -----------------------------------------------------
 
         try:
@@ -163,17 +164,17 @@ def send_absence_notifications(
             )
 
         except EmailDeliveryError:
-            # Do not create a notification record if
-            # Resend failed.
+            # Do NOT create the notification record.
+            # The scheduler can retry later.
             continue
 
         # -----------------------------------------------------
         # 8. Record successful delivery
         # -----------------------------------------------------
 
-        notification = AbsenceNotification(
+        notification = AttendanceSummaryNotification(
             student_id=student.id,
-            attendance_date=attendance_date,
+            summary_date=attendance_date,
         )
 
         db.add(notification)
@@ -195,32 +196,34 @@ def build_attendance_email(
 
     lines = []
 
-    lines.append("FACE TRACK")
-    lines.append("=" * 50)
+    lines.append("FACETRACK")
+    lines.append("=" * 60)
     lines.append("")
+
     lines.append("Daily Attendance Report")
-    lines.append("=" * 50)
+    lines.append("=" * 60)
     lines.append("")
 
     lines.append(
-        f"Student   : {student.name}"
+        f"Student : {student.name}"
     )
 
     lines.append(
-        f"Roll No   : {student.roll_no}"
+        f"Roll No : {student.roll_no}"
     )
 
     lines.append(
-        f"Date      : {attendance_date.strftime('%d %B %Y')}"
+        f"Date    : {attendance_date.strftime('%d %B %Y')}"
     )
 
     lines.append("")
+
     lines.append("-" * 70)
 
     lines.append(
         f"{'Subject':<25}"
-        f"{'Time':<25}"
-        f"{'Status'}"
+        f"{'Time':<27}"
+        f"Status"
     )
 
     lines.append("-" * 70)
@@ -234,11 +237,12 @@ def build_attendance_email(
 
         lines.append(
             f"{row['subject']:<25}"
-            f"{time:<25}"
+            f"{time:<27}"
             f"{row['status']}"
         )
 
     lines.append("-" * 70)
+
     lines.append("")
 
     lines.append("Today's Summary")
@@ -261,8 +265,10 @@ def build_attendance_email(
     )
 
     lines.append("")
-    lines.append("=" * 50)
+
+    lines.append("=" * 60)
     lines.append("")
+
     lines.append(
         "This is an automatically generated email from FaceTrack."
     )

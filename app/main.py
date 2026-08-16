@@ -27,8 +27,11 @@ from app.schemas.auth import AdminCreate
 from app.services.auth_service import create_admin
 from app.security.password import hash_password, verify_password
 from app.config import ABSENCE_CHECK_HOUR, CORS_ORIGINS
-from app.services.absence_notification_service import send_absence_notifications
+from app.services.absence_notification_service import (
+    send_attendance_summary_notifications,
+)
 from app.models.attendance_summary_notification import AttendanceSummaryNotification
+
 
 
 logger = logging.getLogger(__name__)
@@ -197,7 +200,10 @@ def absence_email_scheduler(stop_event: threading.Event):
         if now.hour >= ABSENCE_CHECK_HOUR and now.date() != last_run_date:
             try:
                 with SessionLocal() as session:
-                    send_absence_notifications(session, now.date())
+                   send_attendance_summary_notifications(
+    session,
+    now.date(),
+)
                 last_run_date = now.date()
             except Exception:
                 logger.exception("Unable to send absence notification emails")
