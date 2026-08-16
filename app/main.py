@@ -21,6 +21,7 @@ from app.api.lecture_schedule import router as lecture_schedule_router
 from app.api.college_closure import router as college_closure_router
 from app.api.attendance_management import router as attendance_management_router
 from app.api.class_sections import router as class_section_router
+from app.api.teacher import router as teacher_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.admin import Admin
 from app.models.college import College
@@ -60,9 +61,19 @@ def ensure_lecture_columns():
     inspector = inspect(engine)
     if "lectures" not in inspector.get_table_names(): return
     columns = {column["name"] for column in inspector.get_columns("lectures")}
-    if "status" not in columns:
+    with engine.begin() as connection:
+        if "status" not in columns: connection.exec_driver_sql("ALTER TABLE lectures ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'Scheduled'")
+        if "class_section_id" not in columns: connection.exec_driver_sql("ALTER TABLE lectures ADD COLUMN class_section_id INTEGER NULL")
+        if "teacher_id" not in columns: connection.exec_driver_sql("ALTER TABLE lectures ADD COLUMN teacher_id INTEGER NULL")
+
+
+def ensure_student_class_column():
+    inspector = inspect(engine)
+    if "students" not in inspector.get_table_names(): return
+    columns = {column["name"] for column in inspector.get_columns("students")}
+    if "class_section_id" not in columns:
         with engine.begin() as connection:
-            connection.exec_driver_sql("ALTER TABLE lectures ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'Scheduled'")
+            connection.exec_driver_sql("ALTER TABLE students ADD COLUMN class_section_id INTEGER NULL")
 
 
 def ensure_attendance_columns():
@@ -153,11 +164,11 @@ async def lifespan(app: FastAPI):
 
 
 Base.metadata.create_all(bind=engine)
-ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); ensure_attendance_columns(); create_default_admin()
+ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); ensure_student_class_column(); ensure_attendance_columns(); create_default_admin()
 
 app = FastAPI(title="FaceTrack API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router); app.include_router(attendance_management_router); app.include_router(class_section_router)
+app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router); app.include_router(attendance_management_router); app.include_router(class_section_router); app.include_router(teacher_router)
 
 @app.get("/")
-def home(): return {"message": "Face Attendance API Running"}
+def home(): return {"message": "FaceTrack API Running"}
