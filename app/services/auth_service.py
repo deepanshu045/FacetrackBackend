@@ -21,12 +21,14 @@ def create_admin(
     admin: AdminCreate,
     college_id: int,
 ):
+    username = admin.username.strip()
+    email = str(admin.email).strip().lower()
+
     existing = (
         db.query(Admin)
         .filter(
-            Admin.college_id == college_id,
-            ((Admin.username == admin.username) |
-             (Admin.email == admin.email))
+            (Admin.username == username) |
+            (Admin.email == email)
         )
         .first()
     )
@@ -36,9 +38,9 @@ def create_admin(
 
     new_admin = Admin(
         college_id=college_id,
-        username=admin.username,
+        username=username,
         name=admin.name.strip(),
-        email=admin.email,
+        email=email,
         password_hash=hash_password(admin.password)
     )
 
@@ -77,17 +79,24 @@ def start_college_registration(db: Session, registration) -> None:
         raise RuntimeError("Email verification is not configured on the server.")
 
     slug = registration.college_slug.strip().lower()
+    username = registration.username.strip()
     if not slug or not slug.replace("-", "").isalnum():
         raise ValueError("College ID may contain only letters, numbers, and hyphens.")
+    if not username:
+        raise ValueError("Username cannot be empty.")
 
     email = str(registration.email).strip().lower()
 
     if db.query(College).filter(College.slug == slug).first():
         raise ValueError("That college ID is already registered.")
 
+    if db.query(Admin).filter(Admin.username == username).first():
+        raise ValueError("That username is already in use.")
+
     if db.query(PendingCollegeRegistration).filter(
         (PendingCollegeRegistration.college_slug == slug)
         | (PendingCollegeRegistration.email == email)
+        | (PendingCollegeRegistration.username == username)
     ).first():
         raise ValueError("A verification request has already been sent for this college registration.")
 
@@ -95,7 +104,7 @@ def start_college_registration(db: Session, registration) -> None:
     pending = PendingCollegeRegistration(
         college_name=registration.college_name.strip(),
         college_slug=slug,
-        username=registration.username.strip(),
+        username=username,
         name=registration.name.strip(),
         email=email,
         password_hash=hash_password(registration.password),
@@ -149,6 +158,9 @@ def verify_college_registration(db: Session, token: str):
     if db.query(College).filter(College.slug == pending.college_slug).first():
         return None
 
+    if db.query(Admin).filter(Admin.username == pending.username).first():
+        return None
+
     college = College(name=pending.college_name, slug=pending.college_slug, is_active=True)
     db.add(college)
     db.flush()
@@ -179,7 +191,7 @@ def authenticate_admin(
         .filter(
             College.slug == college_slug.strip().lower(),
             College.is_active.is_(True),
-            Admin.username == username,
+            Admin.username == username.strip(),
         )
         .first()
     )

@@ -79,11 +79,30 @@ def ensure_multitenancy_columns():
     if engine.dialect.name == "mysql":
         inspector = inspect(engine)
         with engine.begin() as connection:
+            # Admin usernames are globally unique, not just unique inside a college.
+            duplicate_usernames = connection.execute(text("""
+                SELECT username
+                FROM admins
+                GROUP BY username
+                HAVING COUNT(*) > 1
+                LIMIT 1
+            """)).scalar()
+            if duplicate_usernames is not None:
+                raise RuntimeError(
+                    f"Duplicate admin username found: {duplicate_usernames!r}. "
+                    "Rename the duplicate admin accounts before starting the application."
+                )
+
             for table, columns in (("admins", {"username", "email"}), ("students", {"roll_no", "email"})):
                 for constraint in inspector.get_unique_constraints(table):
                     constrained = set(constraint.get("column_names") or []); name = constraint.get("name") or ""
                     if constrained in ({column} for column in columns) and re.fullmatch(r"[A-Za-z0-9_]+", name): connection.exec_driver_sql(f"ALTER TABLE {table} DROP INDEX {name}")
-            for table, index_name, fields in (("admins", "uq_admin_college_username", "college_id, username"), ("admins", "uq_admin_college_email", "college_id, email"), ("students", "uq_student_college_roll_no", "college_id, roll_no"), ("students", "uq_student_college_email", "college_id, email")):
+
+            existing_admin_indexes = {i["name"] for i in inspect(engine).get_indexes("admins")}
+            if "uq_admin_college_username" in existing_admin_indexes:
+                connection.exec_driver_sql("DROP INDEX uq_admin_college_username ON admins")
+
+            for table, index_name, fields in (("admins", "uq_admin_username", "username"), ("admins", "uq_admin_college_email", "college_id, email"), ("students", "uq_student_college_roll_no", "college_id, roll_no"), ("students", "uq_student_college_email", "college_id, email")):
                 if index_name not in {i["name"] for i in inspect(engine).get_indexes(table)}: connection.exec_driver_sql(f"CREATE UNIQUE INDEX {index_name} ON {table} ({fields})")
 
 

@@ -23,7 +23,7 @@ class Admin(Base):
 
     college_id = Column(Integer, ForeignKey("colleges.id"), nullable=False, index=True)
 
-    username = Column(String(100), nullable=False)
+    username = Column(String(100), nullable=False, unique=True, index=True)
 
     name = Column(String(150), nullable=True)
 
@@ -82,7 +82,6 @@ class Admin(Base):
     college = relationship("College", back_populates="admins")
 
     __table_args__ = (
-        UniqueConstraint("college_id", "username", name="uq_admin_college_username"),
         UniqueConstraint("college_id", "email", name="uq_admin_college_email"),
     )
 
