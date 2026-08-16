@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
 from app.database.dependency import get_db
 from app.dependencies.auth import get_current_admin
 from app.dependencies.teacher_auth import get_current_teacher
@@ -21,31 +20,21 @@ router = APIRouter(prefix="/teachers", tags=["Teachers"])
 
 def teacher_can_access_lecture(db: Session, teacher: Teacher, lecture_id: int):
     lecture = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.college_id == teacher.college_id).first()
-    if lecture is None:
-        raise HTTPException(404, "Lecture not found.")
+    if lecture is None: raise HTTPException(404, "Lecture not found.")
     assigned = db.query(TeacherAssignment).filter(TeacherAssignment.teacher_id == teacher.id, TeacherAssignment.class_section_id == lecture.class_section_id).first()
-    if lecture.teacher_id != teacher.id and assigned is None:
-        raise HTTPException(403, "You are not assigned to this lecture or class.")
-    if lecture.status == "Cancelled":
-        raise HTTPException(400, "This lecture has been cancelled. Attendance cannot be marked.")
+    if lecture.teacher_id != teacher.id and assigned is None: raise HTTPException(403, "You are not assigned to this lecture or class.")
+    if lecture.status == "Cancelled": raise HTTPException(400, "This lecture has been cancelled. Attendance cannot be marked.")
     return lecture
 
 
 @router.post("", response_model=TeacherResponse, status_code=status.HTTP_201_CREATED)
 def create_teacher(data: TeacherCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
-    if len(data.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters.")
+    if len(data.password) < 8: raise HTTPException(400, "Password must be at least 8 characters.")
     username = data.username.strip()
-    exists = db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.username == username).first()
-    if exists:
-        raise HTTPException(409, "Teacher username already exists in this college.")
-    if data.email:
-        email_exists = db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.email == str(data.email)).first()
-        if email_exists:
-            raise HTTPException(409, "Teacher email already exists in this college.")
+    if db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.username == username).first(): raise HTTPException(409, "Teacher username already exists in this college.")
+    if data.email and db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.email == str(data.email)).first(): raise HTTPException(409, "Teacher email already exists in this college.")
     teacher = Teacher(college_id=admin.college_id, username=username, name=data.name.strip(), email=str(data.email) if data.email else None, password_hash=hash_password(data.password))
-    db.add(teacher); db.commit(); db.refresh(teacher)
-    return teacher
+    db.add(teacher); db.commit(); db.refresh(teacher); return teacher
 
 
 @router.get("", response_model=list[TeacherResponse])
@@ -56,10 +45,8 @@ def list_teachers(db: Session = Depends(get_db), admin: Admin = Depends(get_curr
 @router.post("/login")
 def login(data: TeacherLogin, db: Session = Depends(get_db)):
     teacher = db.query(Teacher).join(College, Teacher.college_id == College.id).filter(Teacher.username == data.username, College.slug == data.college_slug, Teacher.is_active.is_(True), College.is_active.is_(True)).first()
-    if teacher is None or not verify_password(data.password, teacher.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = create_access_token({"sub": teacher.username, "teacher_id": teacher.id, "college_id": teacher.college_id, "role": "teacher"})
-    return {"access_token": token, "token_type": "bearer"}
+    if teacher is None or not verify_password(data.password, teacher.password_hash): raise HTTPException(status_code=401, detail="Invalid username or password")
+    return {"access_token": create_access_token({"sub": teacher.username, "teacher_id": teacher.id, "college_id": teacher.college_id, "role": "teacher"}), "token_type": "bearer"}
 
 
 @router.get("/me")
@@ -67,18 +54,15 @@ def me(teacher: Teacher = Depends(get_current_teacher)):
     return {"id": teacher.id, "college_id": teacher.college_id, "username": teacher.username, "name": teacher.name, "email": teacher.email}
 
 
-@router.post("/{teacher_id}/classes", response_model=TeacherAssignmentResponse, status_code=201)
+@router.post("/admin/{teacher_id}/classes", response_model=TeacherAssignmentResponse, status_code=201)
 def assign_class(teacher_id: int, data: TeacherAssignmentCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
     teacher = db.query(Teacher).filter(Teacher.id == teacher_id, Teacher.college_id == admin.college_id).first()
     class_section = db.query(ClassSection).filter(ClassSection.id == data.class_section_id, ClassSection.college_id == admin.college_id).first()
-    if teacher is None or class_section is None:
-        raise HTTPException(404, "Teacher or class section not found.")
+    if teacher is None or class_section is None: raise HTTPException(404, "Teacher or class section not found.")
     existing = db.query(TeacherAssignment).filter(TeacherAssignment.teacher_id == teacher_id, TeacherAssignment.class_section_id == data.class_section_id).first()
-    if existing:
-        return existing
+    if existing: return existing
     assignment = TeacherAssignment(teacher_id=teacher_id, class_section_id=data.class_section_id)
-    db.add(assignment); db.commit(); db.refresh(assignment)
-    return assignment
+    db.add(assignment); db.commit(); db.refresh(assignment); return assignment
 
 
 @router.get("/me/classes", response_model=list[TeacherAssignmentResponse])
@@ -104,14 +88,11 @@ def lecture_attendance(lecture_id: int, teacher: Teacher = Depends(get_current_t
 def mark_attendance(lecture_id: int, student_id: int, status_value: str, teacher: Teacher = Depends(get_current_teacher), db: Session = Depends(get_db)):
     lecture = teacher_can_access_lecture(db, teacher, lecture_id)
     student = db.query(Student).filter(Student.id == student_id, Student.college_id == teacher.college_id, Student.class_section_id == lecture.class_section_id).first()
-    if student is None:
-        raise HTTPException(400, "Student does not belong to this lecture's class.")
+    if student is None: raise HTTPException(400, "Student does not belong to this lecture's class.")
     normalized = status_value.strip().title()
-    if normalized not in {"Present", "Absent"}:
-        raise HTTPException(400, "Status must be Present or Absent.")
+    if normalized not in {"Present", "Absent"}: raise HTTPException(400, "Status must be Present or Absent.")
     result = set_attendance_status(db, student.id, lecture.id, normalized)
-    if isinstance(result, str):
-        raise HTTPException(400, result)
+    if isinstance(result, str): raise HTTPException(400, result)
     return {"success": True, "student_id": student.id, "lecture_id": lecture.id, "status": result.status, "attendance_id": result.id}
 
 
@@ -119,11 +100,9 @@ def mark_attendance(lecture_id: int, student_id: int, status_value: str, teacher
 def mark_all(lecture_id: int, status_value: str, teacher: Teacher = Depends(get_current_teacher), db: Session = Depends(get_db)):
     lecture = teacher_can_access_lecture(db, teacher, lecture_id)
     normalized = status_value.strip().title()
-    if normalized not in {"Present", "Absent"}:
-        raise HTTPException(400, "Status must be Present or Absent.")
+    if normalized not in {"Present", "Absent"}: raise HTTPException(400, "Status must be Present or Absent.")
     students = db.query(Student).filter(Student.college_id == teacher.college_id, Student.class_section_id == lecture.class_section_id).all()
     for student in students:
         result = set_attendance_status(db, student.id, lecture.id, normalized)
-        if isinstance(result, str):
-            raise HTTPException(400, result)
+        if isinstance(result, str): raise HTTPException(400, result)
     return {"success": True, "updated": len(students), "status": normalized}
