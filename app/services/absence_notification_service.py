@@ -54,7 +54,7 @@ def send_attendance_summary_notifications(db: Session, attendance_date: date):
 
             if lecture.status == "Cancelled":
                 status = "Cancelled"
-            elif attendance:
+            elif attendance and attendance.status == "Present":
                 status = "Present"
                 present_count += 1
                 counted_lectures += 1
