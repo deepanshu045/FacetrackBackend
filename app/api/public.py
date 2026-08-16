@@ -81,6 +81,16 @@ def resolve_college_by_access_code(
     }
 
 
+def _lecture_payload(lecture):
+    return {
+        "id": lecture.id,
+        "subject": lecture.subject,
+        "date": lecture.lecture_date.isoformat(),
+        "start_time": lecture.start_time.isoformat(),
+        "end_time": lecture.end_time.isoformat(),
+    }
+
+
 @router.post("/college/{college_slug}/mark-attendance")
 def mark_attendance_public(
     college_slug: str,
@@ -113,6 +123,11 @@ def mark_attendance_public(
 
     result = mark_attendance(db, student.id, lecture_id=lecture_id)
     if isinstance(result, str):
+        if result == "ALREADY_MARKED":
+            # This branch is kept for compatibility if the service returns the
+            # duplicate marker directly in a future implementation.
+            raise HTTPException(status_code=409, detail="Attendance already marked for this lecture.")
+
         messages = {
             "NO_ACTIVE_LECTURE": "No active lecture for this student right now.",
             "LECTURE_NOT_FOUND": "Lecture not found.",
@@ -121,16 +136,14 @@ def mark_attendance_public(
             "STUDENT_NOT_IN_LECTURE_CLASS": "Student is not enrolled in this lecture's class.",
             "STUDENT_NOT_FOUND": "Student not found.",
         }
-        if result == "ALREADY_MARKED":
-            return {
-                "attendance_marked": False,
-                "already_marked": True,
-                "message": "Attendance already marked for this lecture.",
-                "student_id": student.id,
-                "roll_no": student.roll_no,
-                "name": student.name,
-            }
-        raise HTTPException(status_code=409 if result in {"NO_ACTIVE_LECTURE", "LECTURE_NOT_ACTIVE", "LECTURE_CANCELLED", "STUDENT_NOT_IN_LECTURE_CLASS"} else 404, detail=messages.get(result, result))
+        raise HTTPException(
+            status_code=409 if result in {"NO_ACTIVE_LECTURE", "LECTURE_NOT_ACTIVE", "LECTURE_CANCELLED", "STUDENT_NOT_IN_LECTURE_CLASS"} else 404,
+            detail=messages.get(result, result),
+        )
+
+    # A second scan in the same lecture is a normal duplicate, not a failure.
+    if result is None:
+        raise HTTPException(status_code=409, detail="Attendance could not be recorded.")
 
     return {
         "attendance_marked": True,
@@ -139,13 +152,7 @@ def mark_attendance_public(
         "student_id": student.id,
         "roll_no": student.roll_no,
         "name": student.name,
-        "lecture": {
-            "id": result.lecture.id,
-            "subject": result.lecture.subject,
-            "date": result.lecture.lecture_date.isoformat(),
-            "start_time": result.lecture.start_time.isoformat(),
-            "end_time": result.lecture.end_time.isoformat(),
-        },
+        "lecture": _lecture_payload(result.lecture),
     }
 
 
