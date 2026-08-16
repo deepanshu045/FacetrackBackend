@@ -19,3 +19,4 @@ class College(Base):
     students = relationship("Student", back_populates="college")
     lectures = relationship("Lecture", back_populates="college", cascade="all, delete-orphan")
     lecture_schedules = relationship("LectureSchedule", back_populates="college", cascade="all, delete-orphan")
+    closures = relationship("CollegeClosure", back_populates="college", cascade="all, delete-orphan")
