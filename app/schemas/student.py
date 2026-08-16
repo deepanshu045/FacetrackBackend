@@ -8,6 +8,8 @@ class StudentCreate(BaseModel):
     email: Optional[EmailStr] = None
     phone_no: Optional[str] = None
     department: str
+    class_name: Optional[str] = None
+    section: Optional[str] = None
 
     @model_validator(mode="after")
     def require_email_or_phone(self):
@@ -22,6 +24,8 @@ class StudentUpdate(BaseModel):
     email: Optional[EmailStr] = None
     phone_no: Optional[str] = None
     department: Optional[str] = None
+    class_name: Optional[str] = None
+    section: Optional[str] = None
 
 
 class StudentResponse(BaseModel):
@@ -31,6 +35,8 @@ class StudentResponse(BaseModel):
     email: Optional[EmailStr] = None
     phone_no: Optional[str] = None
     department: str
+    class_name: Optional[str] = None
+    section: Optional[str] = None
     image_path: Optional[str] = None
     has_face: bool = False
 
