@@ -13,7 +13,16 @@ DB_NAME = os.getenv("DB_NAME")
 # should configure a sender at a domain verified in Resend.
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 RESEND_SENDER = os.getenv("RESEND_SENDER", "FaceTrack <onboarding@resend.dev>")
+
+# During development/testing Resend can deliver only to the account owner's
+# email address. This address receives college registration approval requests.
+COLLEGE_APPROVAL_EMAIL = os.getenv(
+    "COLLEGE_APPROVAL_EMAIL",
+    "deepanshukarma7@gmail.com",
+)
+
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
