@@ -9,14 +9,11 @@ from app.models.college import College
 from app.models.pending_college_registration import PendingCollegeRegistration
 from app.schemas.auth import AdminCreate
 
-from app.config import FRONTEND_URL
+from app.config import BACKEND_URL, COLLEGE_APPROVAL_EMAIL
 from app.security.password import hash_password
 from app.services.email_service import EmailDeliveryError, is_email_configured, send_email
 
-from app.models.admin import Admin
 from app.security.password import verify_password
-
-
 
 
 def create_admin(
@@ -24,7 +21,6 @@ def create_admin(
     admin: AdminCreate,
     college_id: int,
 ):
-
     existing = (
         db.query(Admin)
         .filter(
@@ -47,11 +43,8 @@ def create_admin(
     )
 
     db.add(new_admin)
-
     db.commit()
-
     db.refresh(new_admin)
-
     return new_admin
 
 
@@ -67,29 +60,36 @@ def create_college_with_admin(db: Session, registration):
     db.flush()
     admin = create_admin(
         db,
-        AdminCreate(username=registration.username, name=registration.name, email=registration.email,
-                    password=registration.password),
+        AdminCreate(
+            username=registration.username,
+            name=registration.name,
+            email=registration.email,
+            password=registration.password,
+        ),
         college.id,
     )
     return admin
 
 
 def start_college_registration(db: Session, registration) -> None:
-    """Email a verification link without creating a college or admin yet."""
+    """Create a pending registration and send an approval link to the owner/admin."""
     if not is_email_configured():
         raise RuntimeError("Email verification is not configured on the server.")
 
     slug = registration.college_slug.strip().lower()
     if not slug or not slug.replace("-", "").isalnum():
         raise ValueError("College ID may contain only letters, numbers, and hyphens.")
+
     email = str(registration.email).strip().lower()
+
     if db.query(College).filter(College.slug == slug).first():
         raise ValueError("That college ID is already registered.")
+
     if db.query(PendingCollegeRegistration).filter(
         (PendingCollegeRegistration.college_slug == slug)
         | (PendingCollegeRegistration.email == email)
     ).first():
-        raise ValueError("A verification email has already been sent for this college registration.")
+        raise ValueError("A verification request has already been sent for this college registration.")
 
     token = secrets.token_urlsafe(32)
     pending = PendingCollegeRegistration(
@@ -105,29 +105,41 @@ def start_college_registration(db: Session, registration) -> None:
     db.add(pending)
     db.commit()
 
-    verification_url = f"{FRONTEND_URL}/verify-college?token={token}"
+    # IMPORTANT: the applicant does not get the approval link.
+    # In Resend testing mode the approval email goes to the Resend account owner.
+    approval_url = f"{BACKEND_URL}/auth/approve-college?token={token}"
+
     try:
         send_email(
-            recipient=email,
-            subject="Verify your FaceTrack college registration",
+            recipient=COLLEGE_APPROVAL_EMAIL,
+            subject=f"FaceTrack - College registration approval: {pending.college_name}",
             text=(
-                f"Hello {pending.username},\n\n"
-                f"Verify your email to create the FaceTrack workspace for {pending.college_name}:\n"
-                f"{verification_url}\n\n"
-                "This link expires in 24 hours. If you did not request this, you can ignore this email."
+                "FACETRACK COLLEGE APPROVAL\n"
+                "=" * 60 + "\n\n"
+                f"A new college has requested registration.\n\n"
+                f"College : {pending.college_name}\n"
+                f"College ID : {pending.college_slug}\n"
+                f"Applicant name : {pending.name}\n"
+                f"Applicant username : {pending.username}\n"
+                f"Applicant email : {pending.email}\n\n"
+                "Review the details above. If you approve this registration, open the link below:\n\n"
+                f"{approval_url}\n\n"
+                "The approval link expires in 24 hours and can be used only once.\n"
             ),
         )
     except EmailDeliveryError as error:
         db.delete(pending)
         db.commit()
-        raise RuntimeError("Unable to send the verification email. Please try again later.") from error
+        raise RuntimeError("Unable to send the college approval email. Please try again later.") from error
 
 
 def verify_college_registration(db: Session, token: str):
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    """Approve a pending college registration using the one-time approval token."""
+    token_hash = hashlib.sha256(token.strip().encode()).hexdigest()
     pending = db.query(PendingCollegeRegistration).filter(
         PendingCollegeRegistration.verification_token_hash == token_hash
     ).first()
+
     if pending is None or pending.expires_at < datetime.utcnow():
         if pending is not None:
             db.delete(pending)
@@ -137,9 +149,10 @@ def verify_college_registration(db: Session, token: str):
     if db.query(College).filter(College.slug == pending.college_slug).first():
         return None
 
-    college = College(name=pending.college_name, slug=pending.college_slug)
+    college = College(name=pending.college_name, slug=pending.college_slug, is_active=True)
     db.add(college)
     db.flush()
+
     admin = Admin(
         college_id=college.id,
         username=pending.username,
@@ -160,7 +173,6 @@ def authenticate_admin(
     username: str,
     password: str
 ):
-
     admin = (
         db.query(Admin)
         .join(College)
@@ -175,10 +187,7 @@ def authenticate_admin(
     if admin is None:
         return None
 
-    if not verify_password(
-        password,
-        admin.password_hash
-    ):
+    if not verify_password(password, admin.password_hash):
         return None
 
     return admin
@@ -195,9 +204,6 @@ def update_admin(
         if hasattr(admin, key):
             setattr(admin, key, value)
 
-    # Recognition and sound settings are used by scanners authenticated with a
-    # college access code rather than an individual admin login. Keep these
-    # settings aligned for every administrator in the same college.
     shared_settings = {
         key: value
         for key, value in updates.items()
