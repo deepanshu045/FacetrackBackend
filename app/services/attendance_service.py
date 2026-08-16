@@ -30,10 +30,19 @@ def get_active_lecture(db: Session, student_id: int):
     )
 
 
-def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None):
+def mark_attendance(
+    db: Session,
+    student_id: int,
+    lecture_id: int | None = None,
+    status: str = "Present",
+):
     student = db.query(Student).filter(Student.id == student_id).first()
     if student is None:
         return "STUDENT_NOT_FOUND"
+
+    status = status.strip().title()
+    if status not in {"Present", "Absent"}:
+        return "INVALID_STATUS"
 
     if lecture_id is None:
         lecture = get_active_lecture(db, student_id)
@@ -42,7 +51,10 @@ def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None)
     else:
         lecture = (
             db.query(Lecture)
-            .filter(Lecture.id == lecture_id, Lecture.college_id == student.college_id)
+            .filter(
+                Lecture.id == lecture_id,
+                Lecture.college_id == student.college_id,
+            )
             .first()
         )
         if lecture is None:
@@ -51,7 +63,11 @@ def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None)
             return "LECTURE_CANCELLED"
 
         now = datetime.now()
-        if lecture.lecture_date != now.date() or now.time() < lecture.start_time or now.time() > lecture.end_time:
+        if (
+            lecture.lecture_date != now.date()
+            or now.time() < lecture.start_time
+            or now.time() > lecture.end_time
+        ):
             return "LECTURE_NOT_ACTIVE"
 
     if lecture.status == "Cancelled":
@@ -59,13 +75,26 @@ def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None)
 
     existing = (
         db.query(Attendance)
-        .filter(Attendance.student_id == student_id, Attendance.lecture_id == lecture.id)
+        .filter(
+            Attendance.student_id == student_id,
+            Attendance.lecture_id == lecture.id,
+        )
         .first()
     )
-    if existing:
-        return "ALREADY_MARKED"
 
-    attendance = Attendance(student_id=student_id, lecture_id=lecture.id, marked_at=datetime.now())
+    if existing:
+        existing.status = status
+        existing.marked_at = datetime.now()
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    attendance = Attendance(
+        student_id=student_id,
+        lecture_id=lecture.id,
+        status=status,
+        marked_at=datetime.now(),
+    )
     db.add(attendance)
     db.commit()
     db.refresh(attendance)
