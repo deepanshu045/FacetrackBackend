@@ -1,3 +1,4 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.lecture import Lecture
@@ -53,21 +54,48 @@ def _resolve_teacher(db: Session, college_id: int, teacher_id):
     return teacher
 
 
+def _commit_lecture(db: Session, lecture: Lecture):
+    try:
+        db.add(lecture)
+        db.commit()
+        db.refresh(lecture)
+        return lecture
+    except IntegrityError as exc:
+        db.rollback()
+        # The database constraint protects against two requests creating the
+        # same lecture at the same time, even if both passed the overlap check.
+        if "uq_college_lecture" in str(exc.orig):
+            raise ValueError(
+                "This lecture already exists for this college, date, subject and start time. "
+                "Please choose a different time or lecture."
+            ) from exc
+        raise
+
+
 def create_lecture(db: Session, college_id: int, data: LectureCreate):
     _validate_time_range(data.start_time, data.end_time)
     class_section = _resolve_class(db, college_id, data)
     teacher = _resolve_teacher(db, college_id, data.teacher_id)
+
     if _has_overlap(db, college_id, class_section.id, data.lecture_date, data.start_time, data.end_time):
-        raise ValueError("Lecture overlaps with another scheduled lecture for the same class and section.")
+        raise ValueError(
+            "This class already has a lecture during this time. "
+            "Please choose a different time."
+        )
+
     existing = db.query(Lecture).filter(
         Lecture.college_id == college_id,
         Lecture.lecture_date == data.lecture_date,
         Lecture.subject == data.subject,
         Lecture.start_time == data.start_time,
         Lecture.class_section_id == class_section.id,
+        Lecture.status != "Cancelled",
     ).first()
     if existing:
-        return None
+        raise ValueError(
+            "This lecture already exists for the selected class, date, subject and start time."
+        )
+
     lecture = Lecture(
         college_id=college_id,
         class_section_id=class_section.id,
@@ -80,8 +108,7 @@ def create_lecture(db: Session, college_id: int, data: LectureCreate):
         start_time=data.start_time,
         end_time=data.end_time,
     )
-    db.add(lecture); db.commit(); db.refresh(lecture)
-    return lecture
+    return _commit_lecture(db, lecture)
 
 
 def get_lectures(db: Session, college_id: int):
@@ -109,7 +136,8 @@ def update_lecture(db: Session, lecture: Lecture, data: LectureUpdate):
     end_time = data.end_time or lecture.end_time
     _validate_time_range(start_time, end_time)
     if _has_overlap(db, lecture.college_id, class_section_id, lecture_date, start_time, end_time, lecture.id):
-        raise ValueError("Lecture overlaps with another scheduled lecture for the same class and section.")
+        raise ValueError("This class already has another lecture during this time. Please choose a different time.")
+
     lecture.subject = subject
     lecture.class_section_id = class_section_id
     lecture.teacher_id = teacher.id if teacher else None
@@ -119,9 +147,21 @@ def update_lecture(db: Session, lecture: Lecture, data: LectureUpdate):
     lecture.lecture_date = lecture_date
     lecture.start_time = start_time
     lecture.end_time = end_time
-    db.commit(); db.refresh(lecture)
-    return lecture
+
+    try:
+        db.commit()
+        db.refresh(lecture)
+        return lecture
+    except IntegrityError as exc:
+        db.rollback()
+        if "uq_college_lecture" in str(exc.orig):
+            raise ValueError(
+                "Another lecture already uses this subject, date and start time. "
+                "Please choose a different time or lecture."
+            ) from exc
+        raise
 
 
 def delete_lecture(db: Session, lecture: Lecture):
-    db.delete(lecture); db.commit()
+    db.delete(lecture)
+    db.commit()
