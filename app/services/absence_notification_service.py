@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.student import Student
 from app.models.lecture import Lecture
+from app.models.lecture_schedule import LectureSchedule
 from app.models.attendance import Attendance
 from app.models.attendance_summary_notification import AttendanceSummaryNotification
 from app.services.email_service import send_email, EmailDeliveryError
@@ -11,16 +12,22 @@ from app.services.lecture_schedule_service import sync_lectures_for_date
 
 
 def send_attendance_summary_notifications(db: Session, attendance_date: date):
-    lectures = db.query(Lecture).filter(Lecture.lecture_date == attendance_date).order_by(Lecture.start_time.asc()).all()
+    # Generate today's actual lectures from every college's weekly timetable.
+    college_ids = {row[0] for row in db.query(LectureSchedule.college_id).distinct().all()}
+    for college_id in college_ids:
+        sync_lectures_for_date(db, college_id, attendance_date)
+
+    lectures = db.query(Lecture).filter(
+        Lecture.lecture_date == attendance_date
+    ).order_by(Lecture.start_time.asc()).all()
     if not lectures:
         return
 
     college_ids = {lecture.college_id for lecture in lectures}
-    for college_id in college_ids:
-        sync_lectures_for_date(db, college_id, attendance_date)
-
-    lectures = db.query(Lecture).filter(Lecture.lecture_date == attendance_date).order_by(Lecture.start_time.asc()).all()
-    students = db.query(Student).filter(Student.college_id.in_([l.college_id for l in lectures]), Student.email.isnot(None)).all()
+    students = db.query(Student).filter(
+        Student.college_id.in_(college_ids),
+        Student.email.isnot(None),
+    ).all()
 
     for student in students:
         student_lectures = [l for l in lectures if l.college_id == student.college_id]
@@ -63,16 +70,9 @@ def send_attendance_summary_notifications(db: Session, attendance_date: date):
                 "status": status,
             })
 
-        if counted_lectures == 0:
-            percentage = 0
-        else:
-            percentage = round((present_count / counted_lectures) * 100, 2)
-
+        percentage = round((present_count / counted_lectures) * 100, 2) if counted_lectures else 0
         subject = f"FaceTrack - Daily Attendance Report - {attendance_date.strftime('%d %B %Y')}"
-        text = build_attendance_email(
-            student, attendance_date, report_rows,
-            present_count, absent_count, counted_lectures, percentage,
-        )
+        text = build_attendance_email(student, attendance_date, report_rows, present_count, absent_count, counted_lectures, percentage)
 
         try:
             send_email(recipient=student.email, subject=subject, text=text)
