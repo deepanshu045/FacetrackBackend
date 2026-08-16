@@ -20,6 +20,7 @@ from app.api.lecture import router as lecture_router
 from app.api.lecture_schedule import router as lecture_schedule_router
 from app.api.college_closure import router as college_closure_router
 from app.api.attendance_management import router as attendance_management_router
+from app.api.class_sections import router as class_section_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.admin import Admin
 from app.models.college import College
@@ -156,7 +157,7 @@ ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_c
 
 app = FastAPI(title="FaceTrack API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router); app.include_router(attendance_management_router)
+app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router); app.include_router(attendance_management_router); app.include_router(class_section_router)
 
 @app.get("/")
 def home(): return {"message": "Face Attendance API Running"}
