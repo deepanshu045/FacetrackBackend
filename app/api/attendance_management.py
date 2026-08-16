@@ -39,10 +39,7 @@ class BulkAttendanceRequest(BaseModel):
 
 
 def get_college_lecture(db: Session, lecture_id: int, college_id: int):
-    lecture = db.query(Lecture).filter(
-        Lecture.id == lecture_id,
-        Lecture.college_id == college_id,
-    ).first()
+    lecture = db.query(Lecture).filter(Lecture.id == lecture_id, Lecture.college_id == college_id).first()
     if lecture is None:
         raise HTTPException(status_code=404, detail="Lecture not found.")
     if lecture.status == "Cancelled":
@@ -68,6 +65,8 @@ def attendance_result(result):
         raise HTTPException(status_code=404, detail="Lecture not found.")
     if result == "LECTURE_CANCELLED":
         raise HTTPException(status_code=400, detail="This lecture has been cancelled.")
+    if result == "STUDENT_NOT_IN_LECTURE_CLASS":
+        raise HTTPException(status_code=400, detail="Student does not belong to this lecture's department, class or section.")
     if result == "INVALID_STATUS":
         raise HTTPException(status_code=400, detail="Status must be Present or Absent.")
 
@@ -131,21 +130,13 @@ def mark_student_attendance(lecture_id: int, request: AttendanceStatusRequest, d
 
     result = set_attendance_status(db, student.id, lecture_id, request.status)
     attendance_result(result)
-    return {
-        "success": True,
-        "message": f"{student.name} marked {result.status}.",
-        "student_id": student.id,
-        "lecture_id": lecture_id,
-        "status": result.status,
-        "attendance_id": result.id,
-    }
+    return {"success": True, "message": f"{student.name} marked {result.status}.", "student_id": student.id, "lecture_id": lecture_id, "status": result.status, "attendance_id": result.id}
 
 
 @router.post("/lecture/{lecture_id}/mark-all")
 def mark_all_attendance(lecture_id: int, request: BulkAttendanceRequest, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
     lecture = get_college_lecture(db, lecture_id, admin.college_id)
     students = get_lecture_students(db, lecture, admin.college_id)
-
     updated = 0
     for student in students:
         result = set_attendance_status(db, student.id, lecture.id, request.status)
