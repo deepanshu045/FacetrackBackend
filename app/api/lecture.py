@@ -14,9 +14,14 @@ router = APIRouter(prefix="/lectures", tags=["Lectures"])
 
 @router.post("", response_model=LectureResponse, status_code=status.HTTP_201_CREATED)
 def create(data: LectureCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
-    lecture = create_lecture(db, admin.college_id, data)
+    try:
+        lecture = create_lecture(db, admin.college_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     if lecture is None:
         raise HTTPException(status_code=400, detail="Lecture already exists.")
+
     return lecture
 
 
