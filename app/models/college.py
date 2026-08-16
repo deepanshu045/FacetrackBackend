@@ -12,14 +12,10 @@ class College(Base):
     name = Column(String(150), nullable=False)
     slug = Column(String(80), unique=True, nullable=False, index=True)
     is_active = Column(Boolean, nullable=False, server_default="1")
-    # Only a bcrypt hash is stored; the plain access code is shown once to the admin.
     access_code_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     admins = relationship("Admin", back_populates="college")
     students = relationship("Student", back_populates="college")
-    lectures = relationship(
-    "Lecture",
-    back_populates="college",
-    cascade="all, delete-orphan"
-)
+    lectures = relationship("Lecture", back_populates="college", cascade="all, delete-orphan")
+    lecture_schedules = relationship("LectureSchedule", back_populates="college", cascade="all, delete-orphan")
