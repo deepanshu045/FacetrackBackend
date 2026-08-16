@@ -5,3 +5,4 @@ from app.models.attendance import Attendance
 from app.models.absence_notification import AbsenceNotification
 from app.models.pending_college_registration import PendingCollegeRegistration
 from app.models.lecture import Lecture
+from app.models.lecture_schedule import LectureSchedule
