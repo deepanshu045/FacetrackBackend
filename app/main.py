@@ -19,6 +19,7 @@ from app.api.public import router as public_router
 from app.api.lecture import router as lecture_router
 from app.api.lecture_schedule import router as lecture_schedule_router
 from app.api.college_closure import router as college_closure_router
+from app.api.attendance_management import router as attendance_management_router
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.admin import Admin
 from app.models.college import College
@@ -61,6 +62,15 @@ def ensure_lecture_columns():
     if "status" not in columns:
         with engine.begin() as connection:
             connection.exec_driver_sql("ALTER TABLE lectures ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'Scheduled'")
+
+
+def ensure_attendance_columns():
+    inspector = inspect(engine)
+    if "attendance" not in inspector.get_table_names(): return
+    columns = {column["name"] for column in inspector.get_columns("attendance")}
+    if "status" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE attendance ADD COLUMN status VARCHAR(10) NOT NULL DEFAULT 'Present'")
 
 
 def ensure_multitenancy_columns():
@@ -142,11 +152,11 @@ async def lifespan(app: FastAPI):
 
 
 Base.metadata.create_all(bind=engine)
-ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); create_default_admin()
+ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); ensure_attendance_columns(); create_default_admin()
 
 app = FastAPI(title="FaceTrack API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router)
+app.include_router(student_router); app.include_router(recognition_router); app.include_router(report_router); app.include_router(auth_router); app.include_router(notification_router); app.include_router(public_router); app.include_router(lecture_router); app.include_router(lecture_schedule_router); app.include_router(college_closure_router); app.include_router(attendance_management_router)
 
 @app.get("/")
 def home(): return {"message": "Face Attendance API Running"}
