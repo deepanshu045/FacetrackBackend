@@ -11,7 +11,10 @@ class LectureSchedule(Base):
     id = Column(Integer, primary_key=True, index=True)
     college_id = Column(Integer, ForeignKey("colleges.id"), nullable=False, index=True)
     subject = Column(String(150), nullable=False)
-    day_of_week = Column(Integer, nullable=False)  # Monday=0 ... Sunday=6
+    department = Column(String(100), nullable=True, index=True)
+    class_name = Column(String(100), nullable=True, index=True)
+    section = Column(String(50), nullable=True, index=True)
+    day_of_week = Column(Integer, nullable=False)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
