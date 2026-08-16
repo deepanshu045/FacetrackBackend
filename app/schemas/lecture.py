@@ -1,23 +1,24 @@
 from datetime import date, time, datetime
-
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class LectureCreate(BaseModel):
     subject: str
-    department: str
-    class_name: str
-    section: str
+    class_section_id: int | None = None
+    department: str | None = None
+    class_name: str | None = None
+    section: str | None = None
+    teacher_id: int | None = None
     lecture_date: date
     start_time: time
     end_time: time
 
-    @field_validator("subject", "department", "class_name", "section")
+    @field_validator("subject")
     @classmethod
-    def validate_text(cls, value: str):
+    def validate_subject(cls, value: str):
         value = value.strip()
         if not value:
-            raise ValueError("This field is required.")
+            raise ValueError("Subject is required.")
         return value
 
     @field_validator("end_time")
@@ -31,9 +32,11 @@ class LectureCreate(BaseModel):
 
 class LectureUpdate(BaseModel):
     subject: str | None = None
+    class_section_id: int | None = None
     department: str | None = None
     class_name: str | None = None
     section: str | None = None
+    teacher_id: int | None = None
     lecture_date: date | None = None
     start_time: time | None = None
     end_time: time | None = None
@@ -42,6 +45,8 @@ class LectureUpdate(BaseModel):
 class LectureResponse(BaseModel):
     id: int
     college_id: int
+    class_section_id: int | None = None
+    teacher_id: int | None = None
     subject: str
     department: str | None = None
     class_name: str | None = None
@@ -51,5 +56,4 @@ class LectureResponse(BaseModel):
     end_time: time
     status: str
     created_at: datetime | None = None
-
     model_config = ConfigDict(from_attributes=True)
