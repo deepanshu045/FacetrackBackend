@@ -7,7 +7,7 @@ from app.models.student import Student
 from app.models.college import College
 from app.models.admin import Admin
 from app.security.password import verify_password
-from app.services.attendance_service import mark_attendance
+from app.services.attendance_service import mark_attendance, get_active_lecture
 from app.services.report_service import get_student_attendance
 
 router = APIRouter(prefix="/public", tags=["Public"])
@@ -124,9 +124,18 @@ def mark_attendance_public(
     result = mark_attendance(db, student.id, lecture_id=lecture_id)
     if isinstance(result, str):
         if result == "ALREADY_MARKED":
-            # This branch is kept for compatibility if the service returns the
-            # duplicate marker directly in a future implementation.
-            raise HTTPException(status_code=409, detail="Attendance already marked for this lecture.")
+            lecture = get_active_lecture(db, student.id)
+            if lecture is None:
+                raise HTTPException(status_code=409, detail="Attendance already marked for the current lecture.")
+            return {
+                "attendance_marked": False,
+                "already_marked": True,
+                "message": "Attendance already marked for this lecture.",
+                "student_id": student.id,
+                "roll_no": student.roll_no,
+                "name": student.name,
+                "lecture": _lecture_payload(lecture),
+            }
 
         messages = {
             "NO_ACTIVE_LECTURE": "No active lecture for this student right now.",
@@ -140,10 +149,6 @@ def mark_attendance_public(
             status_code=409 if result in {"NO_ACTIVE_LECTURE", "LECTURE_NOT_ACTIVE", "LECTURE_CANCELLED", "STUDENT_NOT_IN_LECTURE_CLASS"} else 404,
             detail=messages.get(result, result),
         )
-
-    # A second scan in the same lecture is a normal duplicate, not a failure.
-    if result is None:
-        raise HTTPException(status_code=409, detail="Attendance could not be recorded.")
 
     return {
         "attendance_marked": True,
