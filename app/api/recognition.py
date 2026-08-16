@@ -18,7 +18,6 @@ class ManualAttendanceRequest(BaseModel):
 
 
 router = APIRouter(prefix="/recognition", tags=["Recognition"])
-
 TEMP_FOLDER = "app/temp"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
@@ -28,21 +27,16 @@ def handle_attendance_result(result):
         "NO_ACTIVE_LECTURE": "No active lecture is running right now.",
         "LECTURE_NOT_FOUND": "Lecture not found.",
         "LECTURE_NOT_ACTIVE": "This lecture is not currently active.",
+        "LECTURE_CANCELLED": "This lecture has been cancelled. Attendance cannot be marked.",
         "STUDENT_NOT_FOUND": "Student not found.",
     }
-
     if result in messages:
         raise HTTPException(status_code=400, detail=messages[result])
 
 
 @router.post("/match")
-def match_face(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin),
-):
+def match_face(file: UploadFile = File(...), db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
     filepath = os.path.join(TEMP_FOLDER, file.filename)
-
     try:
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -53,81 +47,24 @@ def match_face(
 
     if result == "INVALID_FACE":
         raise HTTPException(status_code=400, detail="Image must contain exactly one face.")
-
     if result is None:
         return {"matched": False, "message": "No matching student found."}
 
     attendance = mark_attendance(db, result.id)
-
     if attendance == "ALREADY_MARKED":
-        return {
-            "matched": True,
-            "attendance_marked": False,
-            "message": "Attendance already marked for this lecture.",
-            "student_id": result.id,
-            "roll_no": result.roll_no,
-            "name": result.name,
-            "department": result.department,
-        }
-
+        return {"matched": True, "attendance_marked": False, "message": "Attendance already marked for this lecture.", "student_id": result.id, "roll_no": result.roll_no, "name": result.name, "department": result.department}
     handle_attendance_result(attendance)
-
-    return {
-        "matched": True,
-        "attendance_marked": True,
-        "message": "Attendance marked successfully.",
-        "student_id": result.id,
-        "roll_no": result.roll_no,
-        "name": result.name,
-        "department": result.department,
-        "attendance_id": attendance.id,
-        "date": str(attendance.marked_at.date()),
-        "time": str(attendance.marked_at.time()),
-    }
+    return {"matched": True, "attendance_marked": True, "message": "Attendance marked successfully.", "student_id": result.id, "roll_no": result.roll_no, "name": result.name, "department": result.department, "attendance_id": attendance.id, "date": str(attendance.marked_at.date()), "time": str(attendance.marked_at.time())}
 
 
 @router.post("/manual")
-def mark_attendance_manual(
-    request: ManualAttendanceRequest,
-    db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin),
-):
-    student = (
-        db.query(Student)
-        .filter(
-            Student.id == request.student_id,
-            Student.college_id == admin.college_id,
-        )
-        .first()
-    )
-
+def mark_attendance_manual(request: ManualAttendanceRequest, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+    student = db.query(Student).filter(Student.id == request.student_id, Student.college_id == admin.college_id).first()
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found.")
 
     attendance = mark_attendance(db, student.id)
-
     if attendance == "ALREADY_MARKED":
-        return {
-            "matched": True,
-            "attendance_marked": False,
-            "message": "Attendance already marked for this lecture.",
-            "student_id": student.id,
-            "roll_no": student.roll_no,
-            "name": student.name,
-            "department": student.department,
-        }
-
+        return {"matched": True, "attendance_marked": False, "message": "Attendance already marked for this lecture.", "student_id": student.id, "roll_no": student.roll_no, "name": student.name, "department": student.department}
     handle_attendance_result(attendance)
-
-    return {
-        "matched": True,
-        "attendance_marked": True,
-        "message": "Attendance marked successfully.",
-        "student_id": student.id,
-        "roll_no": student.roll_no,
-        "name": student.name,
-        "department": student.department,
-        "attendance_id": attendance.id,
-        "date": str(attendance.marked_at.date()),
-        "time": str(attendance.marked_at.time()),
-    }
+    return {"matched": True, "attendance_marked": True, "message": "Attendance marked successfully.", "student_id": student.id, "roll_no": student.roll_no, "name": student.name, "department": student.department, "attendance_id": attendance.id, "date": str(attendance.marked_at.date()), "time": str(attendance.marked_at.time())}
