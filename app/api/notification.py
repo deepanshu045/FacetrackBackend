@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -7,6 +5,7 @@ from app.database.dependency import get_db
 from app.dependencies.auth import get_current_admin
 from app.models.admin import Admin
 from app.models.attendance import Attendance
+from app.models.lecture import Lecture
 from app.models.student import Student
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -19,10 +18,14 @@ def list_notifications(
     admin: Admin = Depends(get_current_admin),
 ):
     records = (
-        db.query(Attendance, Student)
+        db.query(Attendance, Student, Lecture)
         .join(Student, Attendance.student_id == Student.id)
-        .filter(Student.college_id == admin.college_id)
-        .order_by(Attendance.attendance_date.desc(), Attendance.attendance_time.desc())
+        .join(Lecture, Attendance.lecture_id == Lecture.id)
+        .filter(
+            Student.college_id == admin.college_id,
+            Lecture.college_id == admin.college_id,
+        )
+        .order_by(Attendance.marked_at.desc())
         .limit(limit)
         .all()
     )
@@ -32,9 +35,11 @@ def list_notifications(
             "id": attendance.id,
             "type": "attendance",
             "message": f"Attendance marked for {student.name}",
-            "created_at": datetime.combine(
-                attendance.attendance_date, attendance.attendance_time
-            ).isoformat(),
+            "created_at": attendance.marked_at.isoformat(),
+            "lecture_id": lecture.id,
+            "subject": lecture.subject,
+            "attendance_date": lecture.lecture_date.isoformat(),
+            "status": attendance.status,
         }
-        for attendance, student in records
+        for attendance, student, lecture in records
     ]
