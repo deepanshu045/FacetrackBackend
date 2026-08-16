@@ -115,7 +115,7 @@ def start_college_registration(db: Session, registration) -> None:
             subject=f"FaceTrack - College registration approval: {pending.college_name}",
             text=(
                 "FACETRACK COLLEGE APPROVAL\n"
-                "=" * 60 + "\n\n"
+                + "\n\n"
                 f"A new college has requested registration.\n\n"
                 f"College : {pending.college_name}\n"
                 f"College ID : {pending.college_slug}\n"
