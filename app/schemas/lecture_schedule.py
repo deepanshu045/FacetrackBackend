@@ -5,16 +5,19 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 class LectureScheduleCreate(BaseModel):
     subject: str
+    department: str
+    class_name: str
+    section: str
     day_of_week: int
     start_time: time
     end_time: time
 
-    @field_validator("subject")
+    @field_validator("subject", "department", "class_name", "section")
     @classmethod
-    def validate_subject(cls, value: str):
+    def validate_text(cls, value: str):
         value = value.strip()
         if not value:
-            raise ValueError("Subject is required.")
+            raise ValueError("This field is required.")
         return value
 
     @field_validator("day_of_week")
@@ -37,6 +40,9 @@ class LectureScheduleResponse(BaseModel):
     id: int
     college_id: int
     subject: str
+    department: str | None = None
+    class_name: str | None = None
+    section: str | None = None
     day_of_week: int
     start_time: time
     end_time: time
