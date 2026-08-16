@@ -4,11 +4,41 @@ from app.models.lecture import Lecture
 from app.schemas.lecture import LectureCreate, LectureUpdate
 
 
+def _validate_time_range(start_time, end_time):
+    if end_time <= start_time:
+        raise ValueError("End time must be after start time.")
+
+
+def _has_overlap(
+    db: Session,
+    college_id: int,
+    lecture_date,
+    start_time,
+    end_time,
+    exclude_lecture_id: int | None = None,
+):
+    """Return True when a scheduled lecture overlaps the requested time."""
+    query = db.query(Lecture).filter(
+        Lecture.college_id == college_id,
+        Lecture.lecture_date == lecture_date,
+        Lecture.status != "Cancelled",
+        Lecture.start_time < end_time,
+        Lecture.end_time > start_time,
+    )
+
+    if exclude_lecture_id is not None:
+        query = query.filter(Lecture.id != exclude_lecture_id)
+
+    return query.first() is not None
+
+
 def create_lecture(
     db: Session,
     college_id: int,
     data: LectureCreate
 ):
+    _validate_time_range(data.start_time, data.end_time)
+
     existing = (
         db.query(Lecture)
         .filter(
@@ -22,6 +52,17 @@ def create_lecture(
 
     if existing:
         return None
+
+    if _has_overlap(
+        db,
+        college_id,
+        data.lecture_date,
+        data.start_time,
+        data.end_time,
+    ):
+        raise ValueError(
+            "Lecture overlaps with another scheduled lecture on the same date."
+        )
 
     lecture = Lecture(
         college_id=college_id,
@@ -73,20 +114,51 @@ def update_lecture(
     lecture: Lecture,
     data: LectureUpdate
 ):
-    if data.subject is not None:
-        lecture.subject = data.subject.strip()
+    subject = (
+        data.subject.strip()
+        if data.subject is not None
+        else lecture.subject
+    )
+    lecture_date = data.lecture_date or lecture.lecture_date
+    start_time = data.start_time or lecture.start_time
+    end_time = data.end_time or lecture.end_time
 
-    if data.lecture_date is not None:
-        lecture.lecture_date = data.lecture_date
+    if not subject:
+        raise ValueError("Subject is required.")
 
-    if data.start_time is not None:
-        lecture.start_time = data.start_time
+    _validate_time_range(start_time, end_time)
 
-    if data.end_time is not None:
-        lecture.end_time = data.end_time
+    duplicate = (
+        db.query(Lecture)
+        .filter(
+            Lecture.college_id == lecture.college_id,
+            Lecture.lecture_date == lecture_date,
+            Lecture.subject == subject,
+            Lecture.start_time == start_time,
+            Lecture.id != lecture.id,
+        )
+        .first()
+    )
 
-    if lecture.end_time <= lecture.start_time:
-        raise ValueError("End time must be after start time.")
+    if duplicate:
+        raise ValueError("Lecture already exists.")
+
+    if _has_overlap(
+        db,
+        lecture.college_id,
+        lecture_date,
+        start_time,
+        end_time,
+        exclude_lecture_id=lecture.id,
+    ):
+        raise ValueError(
+            "Lecture overlaps with another scheduled lecture on the same date."
+        )
+
+    lecture.subject = subject
+    lecture.lecture_date = lecture_date
+    lecture.start_time = start_time
+    lecture.end_time = end_time
 
     db.commit()
     db.refresh(lecture)
