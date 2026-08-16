@@ -13,20 +13,16 @@ class LectureCreate(BaseModel):
     @classmethod
     def validate_subject(cls, value: str):
         value = value.strip()
-
         if not value:
             raise ValueError("Subject is required.")
-
         return value
 
     @field_validator("end_time")
     @classmethod
     def validate_time(cls, value: time, info):
         start_time = info.data.get("start_time")
-
         if start_time and value <= start_time:
             raise ValueError("End time must be after start time.")
-
         return value
 
 
@@ -44,6 +40,7 @@ class LectureResponse(BaseModel):
     lecture_date: date
     start_time: time
     end_time: time
+    status: str
     created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
