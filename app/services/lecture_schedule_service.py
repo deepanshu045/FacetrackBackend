@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.lecture import Lecture
 from app.models.lecture_schedule import LectureSchedule
 from app.schemas.lecture_schedule import LectureScheduleCreate
+from app.services.college_closure_service import is_college_closed
 
 
 def create_schedule(db: Session, college_id: int, data: LectureScheduleCreate):
@@ -49,10 +50,10 @@ def delete_schedule(db: Session, schedule: LectureSchedule):
 
 
 def sync_lectures_for_date(db: Session, college_id: int, lecture_date: date):
-    """Create actual lecture occurrences from the weekly timetable.
+    """Create actual lecture occurrences unless the college is closed that day."""
+    if is_college_closed(db, college_id, lecture_date):
+        return []
 
-    Existing lecture rows are never changed, so cancelled occurrences stay cancelled.
-    """
     schedules = (
         db.query(LectureSchedule)
         .filter(
