@@ -91,7 +91,11 @@ def mark_attendance_public(
     if college is None:
         raise HTTPException(status_code=404, detail="College not found.")
 
-    student_id = int(payload.get("student_id"))
+    try:
+        student_id = int(payload.get("student_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="A valid student_id is required.")
+
     student = (
         db.query(Student)
         .filter(Student.id == student_id, Student.college_id == college.id)
@@ -100,13 +104,48 @@ def mark_attendance_public(
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found in this college.")
 
-    result = mark_attendance(db, student.id)
+    lecture_id = payload.get("lecture_id")
+    if lecture_id is not None:
+        try:
+            lecture_id = int(lecture_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="lecture_id must be an integer.")
+
+    result = mark_attendance(db, student.id, lecture_id=lecture_id)
+    if isinstance(result, str):
+        messages = {
+            "NO_ACTIVE_LECTURE": "No active lecture for this student right now.",
+            "LECTURE_NOT_FOUND": "Lecture not found.",
+            "LECTURE_CANCELLED": "This lecture is cancelled.",
+            "LECTURE_NOT_ACTIVE": "This lecture is not currently active.",
+            "STUDENT_NOT_IN_LECTURE_CLASS": "Student is not enrolled in this lecture's class.",
+            "STUDENT_NOT_FOUND": "Student not found.",
+        }
+        if result == "ALREADY_MARKED":
+            return {
+                "attendance_marked": False,
+                "already_marked": True,
+                "message": "Attendance already marked for this lecture.",
+                "student_id": student.id,
+                "roll_no": student.roll_no,
+                "name": student.name,
+            }
+        raise HTTPException(status_code=409 if result in {"NO_ACTIVE_LECTURE", "LECTURE_NOT_ACTIVE", "LECTURE_CANCELLED", "STUDENT_NOT_IN_LECTURE_CLASS"} else 404, detail=messages.get(result, result))
+
     return {
-        "attendance_marked": result != "ALREADY_MARKED",
-        "message": "Attendance already marked today." if result == "ALREADY_MARKED" else "Attendance marked successfully.",
+        "attendance_marked": True,
+        "already_marked": False,
+        "message": "Attendance marked successfully for this lecture.",
         "student_id": student.id,
         "roll_no": student.roll_no,
         "name": student.name,
+        "lecture": {
+            "id": result.lecture.id,
+            "subject": result.lecture.subject,
+            "date": result.lecture.lecture_date.isoformat(),
+            "start_time": result.lecture.start_time.isoformat(),
+            "end_time": result.lecture.end_time.isoformat(),
+        },
     }
 
 
