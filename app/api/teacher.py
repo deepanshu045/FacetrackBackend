@@ -14,6 +14,7 @@ from app.schemas.teacher import TeacherCreate, TeacherResponse, TeacherLogin, Te
 from app.security.password import hash_password, verify_password
 from app.security.jwt import create_access_token
 from app.services.attendance_service import set_attendance_status
+from app.services.auth_service import authenticate_user
 
 router = APIRouter(prefix="/teachers", tags=["Teachers"])
 
@@ -44,9 +45,12 @@ def list_teachers(db: Session = Depends(get_db), admin: Admin = Depends(get_curr
 
 @router.post("/login")
 def login(data: TeacherLogin, db: Session = Depends(get_db)):
-    teacher = db.query(Teacher).join(College, Teacher.college_id == College.id).filter(Teacher.username == data.username, College.slug == data.college_slug, Teacher.is_active.is_(True), College.is_active.is_(True)).first()
-    if teacher is None or not verify_password(data.password, teacher.password_hash): raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"access_token": create_access_token({"sub": teacher.username, "teacher_id": teacher.id, "college_id": teacher.college_id, "role": "teacher"}), "token_type": "bearer"}
+    # Keep this endpoint compatible with the unified /auth/login flow. The
+    # frontend uses /auth/login so admins and teachers share one login screen.
+    user, role = authenticate_user(db, data.college_slug, data.username, data.password)
+    if user is None or role != "teacher":
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return {"access_token": create_access_token({"sub": user.username, "teacher_id": user.id, "college_id": user.college_id, "role": "teacher"}), "token_type": "bearer"}
 
 
 @router.get("/me")
