@@ -222,24 +222,21 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
     db.flush()
 
     now = now_local().replace(second=0, microsecond=0)
+    yesterday = now.date() - timedelta(days=1)
+    tomorrow = now.date() + timedelta(days=1)
 
-    # Keep the active lecture around the exact current India-local time.
-    # Build the other windows as datetimes first, so a seed run near midnight
-    # remains valid if a window crosses into the next calendar day.
+    # Active is deliberately centered around the exact current India-local
+    # time. Completed/upcoming/cancelled use relative dates with fixed clock
+    # windows, so the seed remains valid even when run close to midnight.
     active_start = now - timedelta(minutes=15)
     active_end = now + timedelta(minutes=30)
-    upcoming_start = now + timedelta(minutes=45)
-    upcoming_end = now + timedelta(minutes=105)
-    cancelled_start = now + timedelta(minutes=120)
-    cancelled_end = now + timedelta(minutes=180)
-    completed_date = now.date() - timedelta(days=1)
 
     definitions = (
         (
             "completed",
             teachers[0],
             classes[0],
-            completed_date,
+            yesterday,
             time(10, 0),
             time(11, 0),
             "Completed",
@@ -248,7 +245,7 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
             "active",
             teachers[0],
             classes[0],
-            active_start.date(),
+            now.date(),
             active_start.time(),
             active_end.time(),
             "Scheduled",
@@ -257,18 +254,18 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
             "upcoming",
             teachers[1],
             classes[1],
-            upcoming_start.date(),
-            upcoming_start.time(),
-            upcoming_end.time(),
+            tomorrow,
+            time(9, 0),
+            time(10, 0),
             "Scheduled",
         ),
         (
             "cancelled",
             teachers[2],
             classes[2],
-            cancelled_start.date(),
-            cancelled_start.time(),
-            cancelled_end.time(),
+            tomorrow,
+            time(11, 0),
+            time(12, 0),
             "Cancelled",
         ),
     )
