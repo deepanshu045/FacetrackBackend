@@ -1,18 +1,17 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.models.attendance import Attendance
 from app.models.lecture import Lecture
 from app.models.student import Student
 from app.services.lecture_schedule_service import sync_lectures_for_date
+from app.utils.timezone import now_local
 
 
 ACTIVE_LECTURE_STATUS = "Scheduled"
 
 
 def get_active_lecture(db: Session, student_id: int):
-    now = datetime.now()
+    now = now_local()
     student = db.query(Student).filter(Student.id == student_id).first()
     if student is None:
         return None
@@ -94,11 +93,12 @@ def set_attendance_status(db: Session, student_id: int, lecture_id: int, status:
             student_id=student_id,
             lecture_id=lecture_id,
             status=normalized_status,
+            marked_at=now_local(),
         )
         db.add(attendance)
     else:
         attendance.status = normalized_status
-        attendance.marked_at = datetime.now()
+        attendance.marked_at = now_local()
 
     db.commit()
     db.refresh(attendance)
@@ -119,7 +119,7 @@ def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None)
         if isinstance(lecture, str):
             return lecture
 
-        now = datetime.now()
+        now = now_local()
         if (
             lecture.lecture_date != now.date()
             or now.time() < lecture.start_time
@@ -142,6 +142,7 @@ def mark_attendance(db: Session, student_id: int, lecture_id: int | None = None)
         student_id=student_id,
         lecture_id=lecture.id,
         status="Present",
+        marked_at=now_local(),
     )
     db.add(attendance)
     db.commit()
