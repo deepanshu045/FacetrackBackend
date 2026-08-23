@@ -11,7 +11,7 @@ at which the seed is executed.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import time, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -221,14 +221,14 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
         db.delete(lecture)
     db.flush()
 
-    now = now_local().replace(second=0, microsecond=0)
+    now = now_local()
     yesterday = now.date() - timedelta(days=1)
     tomorrow = now.date() + timedelta(days=1)
 
     # Keep the active lecture inside today's calendar boundaries, even when
     # the seed is run near midnight. The current time is still inside it.
-    day_start = now.replace(hour=0, minute=0)
-    day_end = now.replace(hour=23, minute=59)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
     active_start = max(now - timedelta(minutes=15), day_start)
     active_end = min(now + timedelta(minutes=30), day_end)
 
