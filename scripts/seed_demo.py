@@ -11,7 +11,7 @@ at which the seed is executed.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
@@ -221,56 +221,65 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
         db.delete(lecture)
     db.flush()
 
-    now = now_local()
-    today = now.date()
-    current = now.time().replace(second=0, microsecond=0)
+    now = now_local().replace(second=0, microsecond=0)
 
-    # The minute offsets deliberately keep the active lecture around the exact
-    # current time, making the timing rule testable after every seed run.
-    active_start_dt = now - timedelta(minutes=15)
-    active_end_dt = now + timedelta(minutes=30)
-    upcoming_start_dt = now + timedelta(minutes=45)
-    upcoming_end_dt = now + timedelta(minutes=105)
-    completed_start_dt = now - timedelta(minutes=90)
-    completed_end_dt = now - timedelta(minutes=30)
+    # Keep the active lecture around the exact current India-local time.
+    # The other lectures use datetimes first, so the seed remains valid even
+    # when it is run close to midnight and a window crosses into another date.
+    active_start = now - timedelta(minutes=15)
+    active_end = now + timedelta(minutes=30)
+    upcoming_start = now + timedelta(minutes=45)
+    upcoming_end = now + timedelta(minutes=105)
+    cancelled_start = now + timedelta(minutes=120)
+    cancelled_end = now + timedelta(minutes=180)
+
+    # A fixed clock window on yesterday is intentionally used for the completed
+    # case: it is always finished, while still being relative to the seed date.
+    completed_date = now.date() - timedelta(days=1)
 
     definitions = (
         (
             "completed",
             teachers[0],
             classes[0],
-            today,
-            completed_start_dt.time().replace(second=0, microsecond=0),
-            completed_end_dt.time().replace(second=0, microsecond=0),
+            completed_date,
+            active_start.time(),
+            active_end.time(),
             "Completed",
         ),
         (
             "active",
             teachers[0],
             classes[0],
-            today,
-            active_start_dt.time().replace(second=0, microsecond=0),
-            active_end_dt.time().replace(second=0, microsecond=0),
+            active_start.date(),
+            active_start.time(),
+            active_end.time(),
             "Scheduled",
         ),
         (
             "upcoming",
             teachers[1],
             classes[1],
-            today,
-            upcoming_start_dt.time().replace(second=0, microsecond=0),
-            upcoming_end_dt.time().replace(second=0, microsecond=0),
+            upcoming_start.date(),
+            upcoming_start.time(),
+            upcoming_end.time(),
             "Scheduled",
         ),
         (
             "cancelled",
             teachers[2],
             classes[2],
-            today,
-            (now + timedelta(minutes=120)).time().replace(second=0, microsecond=0),
-            (now + timedelta(minutes=180)).time().replace(second=0, microsecond=0),
+            cancelled_start.date(),
+            cancelled_start.time(),
+            cancelled_end.time(),
             "Cancelled",
         ),
+    )
+
+    # Replace the completed clock values with a deterministic yesterday window.
+    definitions = (
+        definitions[0][:4] + (__import__("datetime").time(10, 0), __import__("datetime").time(11, 0), definitions[0][6]),
+        *definitions[1:],
     )
 
     lectures: dict[str, Lecture] = {}
@@ -306,7 +315,7 @@ def seed_attendance(db: Session, students: list[Student], lectures: dict[str, Le
                 student_id=student.id,
                 lecture_id=completed.id,
                 status=status,
-                marked_at=now_local() - timedelta(minutes=20),
+                marked_at=now_local() - timedelta(days=1),
             )
         )
         created += 1
