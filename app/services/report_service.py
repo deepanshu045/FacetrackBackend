@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.student import Student
 from app.models.attendance import Attendance
 from app.models.lecture import Lecture
+from app.utils.timezone import now_local
 
 
 def _attendance_rows_to_dict(rows):
@@ -54,7 +55,7 @@ def _to_report_rows(rows):
 
 
 def get_today_attendance(db: Session, college_id: int):
-    rows = _query_rows(db, college_id).filter(Lecture.lecture_date == date.today()).all()
+    rows = _query_rows(db, college_id).filter(Lecture.lecture_date == now_local().date()).all()
     return _to_report_rows(rows)
 
 
