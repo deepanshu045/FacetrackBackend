@@ -11,10 +11,17 @@ from app.services.attendance_service import mark_attendance
 from app.dependencies.auth import get_current_admin
 from app.models.admin import Admin
 from app.models.student import Student
+from app.models.college import College
+from app.security.password import verify_password
+from app.services.desktop_presence_service import mark_desktop_seen, desktop_status
 
 
 class ManualAttendanceRequest(BaseModel):
     student_id: int
+
+
+class DesktopHeartbeatRequest(BaseModel):
+    access_code: str
 
 
 router = APIRouter(prefix="/recognition", tags=["Recognition"])
@@ -32,6 +39,31 @@ def handle_attendance_result(result):
     }
     if result in messages:
         raise HTTPException(status_code=400, detail=messages[result])
+
+
+@router.post("/desktop-heartbeat")
+def desktop_heartbeat(request: DesktopHeartbeatRequest, db: Session = Depends(get_db)):
+    code = request.access_code.strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Access code is required.")
+
+    colleges = (
+        db.query(College)
+        .filter(College.is_active.is_(True), College.access_code_hash.is_not(None))
+        .all()
+    )
+    matches = [college for college in colleges if verify_password(code, college.access_code_hash)]
+    if len(matches) != 1:
+        raise HTTPException(status_code=401, detail="Invalid camera access code.")
+
+    mark_desktop_seen(matches[0].id)
+    return {"online": True, "college_id": matches[0].id}
+
+
+@router.get("/desktop-status")
+def get_desktop_status(admin: Admin = Depends(get_current_admin)):
+    status = desktop_status(admin.college_id)
+    return {"college_id": admin.college_id, **status}
 
 
 @router.post("/match")
