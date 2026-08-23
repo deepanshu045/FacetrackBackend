@@ -33,6 +33,7 @@ def create_teacher(data: TeacherCreate, db: Session = Depends(get_db), admin: Ad
     if len(data.password) < 8: raise HTTPException(400, "Password must be at least 8 characters.")
     username = data.username.strip()
     if db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.username == username).first(): raise HTTPException(409, "Teacher username already exists in this college.")
+    if db.query(Admin).filter(Admin.college_id == admin.college_id, Admin.username == username).first(): raise HTTPException(409, "That username is already used by an administrator in this college.")
     if data.email and db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.email == str(data.email)).first(): raise HTTPException(409, "Teacher email already exists in this college.")
     teacher = Teacher(college_id=admin.college_id, username=username, name=data.name.strip(), email=str(data.email) if data.email else None, password_hash=hash_password(data.password))
     db.add(teacher); db.commit(); db.refresh(teacher); return teacher
