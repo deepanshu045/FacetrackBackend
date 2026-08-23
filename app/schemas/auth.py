@@ -1,5 +1,4 @@
 from typing import Optional
-
 from pydantic import BaseModel
 from pydantic import EmailStr
 
@@ -67,6 +66,7 @@ class LoginRequest(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    role: str
 
 
 class RegistrationMessage(BaseModel):
