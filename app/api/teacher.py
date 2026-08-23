@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-app.database.dependency import get_db
+from app.database.dependency import get_db
 from app.dependencies.auth import get_current_admin
 from app.dependencies.teacher_auth import get_current_teacher
 from app.models.admin import Admin
