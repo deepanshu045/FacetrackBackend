@@ -27,4 +27,4 @@ class LectureSchedule(Base):
     class_section = relationship("ClassSection")
     teacher = relationship("Teacher")
 
-    __table_args__ = (UniqueConstraint("college_id", "day_of_week", "subject", "start_time", name="uq_college_weekly_schedule"),)
+    __table_args__ = (UniqueConstraint("college_id", "class_section_id", "day_of_week", "subject", "start_time", name="uq_college_weekly_schedule"),)
