@@ -11,7 +11,7 @@ at which the seed is executed.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import time, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -224,17 +224,14 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
     now = now_local().replace(second=0, microsecond=0)
 
     # Keep the active lecture around the exact current India-local time.
-    # The other lectures use datetimes first, so the seed remains valid even
-    # when it is run close to midnight and a window crosses into another date.
+    # Build the other windows as datetimes first, so a seed run near midnight
+    # remains valid if a window crosses into the next calendar day.
     active_start = now - timedelta(minutes=15)
     active_end = now + timedelta(minutes=30)
     upcoming_start = now + timedelta(minutes=45)
     upcoming_end = now + timedelta(minutes=105)
     cancelled_start = now + timedelta(minutes=120)
     cancelled_end = now + timedelta(minutes=180)
-
-    # A fixed clock window on yesterday is intentionally used for the completed
-    # case: it is always finished, while still being relative to the seed date.
     completed_date = now.date() - timedelta(days=1)
 
     definitions = (
@@ -243,8 +240,8 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
             teachers[0],
             classes[0],
             completed_date,
-            active_start.time(),
-            active_end.time(),
+            time(10, 0),
+            time(11, 0),
             "Completed",
         ),
         (
@@ -274,12 +271,6 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
             cancelled_end.time(),
             "Cancelled",
         ),
-    )
-
-    # Replace the completed clock values with a deterministic yesterday window.
-    definitions = (
-        definitions[0][:4] + (__import__("datetime").time(10, 0), __import__("datetime").time(11, 0), definitions[0][6]),
-        *definitions[1:],
     )
 
     lectures: dict[str, Lecture] = {}
