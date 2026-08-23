@@ -1,10 +1,9 @@
-from datetime import date
-
 from sqlalchemy.orm import Session
 
 from app.models.student import Student
 from app.models.attendance import Attendance
 from app.models.lecture import Lecture
+from app.utils.timezone import today_local
 
 
 def _attendance_rows_to_dict(rows):
@@ -54,7 +53,7 @@ def _to_report_rows(rows):
 
 
 def get_today_attendance(db: Session, college_id: int):
-    rows = _query_rows(db, college_id).filter(Lecture.lecture_date == date.today()).all()
+    rows = _query_rows(db, college_id).filter(Lecture.lecture_date == today_local()).all()
     return _to_report_rows(rows)
 
 
@@ -68,7 +67,7 @@ def get_student_attendance(db: Session, student_id: int, college_id: int):
     return _to_report_rows(rows)
 
 
-def get_attendance_by_date(db: Session, attendance_date: date, college_id: int):
+def get_attendance_by_date(db: Session, attendance_date, college_id: int):
     rows = (
         _query_rows(db, college_id)
         .filter(Lecture.lecture_date == attendance_date)
@@ -79,6 +78,8 @@ def get_attendance_by_date(db: Session, attendance_date: date, college_id: int):
 
 
 def get_monthly_attendance(db: Session, year: int, month: int, college_id: int):
+    from datetime import date
+
     start_date = date(year, month, 1)
     next_month = date(year + (month == 12), (month % 12) + 1, 1)
     rows = (
