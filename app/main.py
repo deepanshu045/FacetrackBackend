@@ -36,8 +36,7 @@ def add_column_if_missing(table, column, definition):
     if table not in inspector.get_table_names(): return
     columns = {c["name"] for c in inspector.get_columns(table)}
     if column not in columns:
-        with engine.begin() as connection:
-            connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        with engine.begin() as connection: connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def ensure_phone_no_column(): add_column_if_missing("students", "phone_no", "VARCHAR(30) NULL")
@@ -51,6 +50,13 @@ def ensure_schedule_columns():
     add_column_if_missing("lecture_schedules", "teacher_id", "INTEGER NULL")
     add_column_if_missing("lecture_schedules", "effective_start_date", "DATE NULL")
     add_column_if_missing("lecture_schedules", "effective_end_date", "DATE NULL")
+    if engine.dialect.name == "mysql" and "lecture_schedules" in inspect(engine).get_table_names():
+        indexes = {i["name"] for i in inspect(engine).get_indexes("lecture_schedules")}
+        with engine.begin() as connection:
+            if "uq_college_weekly_schedule" in indexes:
+                connection.exec_driver_sql("DROP INDEX uq_college_weekly_schedule ON lecture_schedules")
+            if "uq_college_weekly_schedule_v2" not in indexes:
+                connection.exec_driver_sql("CREATE UNIQUE INDEX uq_college_weekly_schedule_v2 ON lecture_schedules (college_id, class_section_id, day_of_week, subject, start_time)")
 def ensure_attendance_columns(): add_column_if_missing("attendance", "status", "VARCHAR(10) NOT NULL DEFAULT 'Present'")
 
 
@@ -59,11 +65,7 @@ def ensure_admin_settings_columns():
     if "admins" not in inspector.get_table_names(): return
     columns = {c["name"] for c in inspector.get_columns("admins")}
     with engine.begin() as connection:
-        defaults = {
-            "notifications": "BOOLEAN NOT NULL DEFAULT 1", "email_alerts": "BOOLEAN NOT NULL DEFAULT 0", "sound_alerts": "BOOLEAN NOT NULL DEFAULT 1",
-            "threshold": "INT NOT NULL DEFAULT 85", "resolution": "VARCHAR(10) NOT NULL DEFAULT '1080p'", "fps": "VARCHAR(10) NOT NULL DEFAULT '30'",
-            "language": "VARCHAR(30) NOT NULL DEFAULT 'English'", "name": "VARCHAR(150) NULL",
-        }
+        defaults = {"notifications": "BOOLEAN NOT NULL DEFAULT 1", "email_alerts": "BOOLEAN NOT NULL DEFAULT 0", "sound_alerts": "BOOLEAN NOT NULL DEFAULT 1", "threshold": "INT NOT NULL DEFAULT 85", "resolution": "VARCHAR(10) NOT NULL DEFAULT '1080p'", "fps": "VARCHAR(10) NOT NULL DEFAULT '30'", "language": "VARCHAR(30) NOT NULL DEFAULT 'English'", "name": "VARCHAR(150) NULL"}
         for name, definition in defaults.items():
             if name not in columns: connection.exec_driver_sql(f"ALTER TABLE admins ADD COLUMN {name} {definition}")
 
@@ -83,11 +85,8 @@ def ensure_multitenancy_columns():
     if engine.dialect.name == "mysql":
         inspector = inspect(engine)
         with engine.begin() as connection:
-            duplicate_usernames = connection.execute(text("""
-                SELECT username FROM admins GROUP BY username HAVING COUNT(*) > 1 LIMIT 1
-            """)).scalar()
-            if duplicate_usernames is not None:
-                raise RuntimeError(f"Duplicate admin username found: {duplicate_usernames!r}. Rename the duplicate admin accounts before starting the application.")
+            duplicate_usernames = connection.execute(text("SELECT username FROM admins GROUP BY username HAVING COUNT(*) > 1 LIMIT 1")).scalar()
+            if duplicate_usernames is not None: raise RuntimeError(f"Duplicate admin username found: {duplicate_usernames!r}. Rename the duplicate admin accounts before starting the application.")
             for table, columns in (("admins", {"username", "email"}), ("students", {"roll_no", "email"})):
                 for constraint in inspector.get_unique_constraints(table):
                     constrained = set(constraint.get("column_names") or []); name = constraint.get("name") or ""
