@@ -10,7 +10,7 @@ from app.models.teacher import Teacher, TeacherAssignment
 from app.models.lecture import Lecture
 from app.models.student import Student
 from app.models.attendance import Attendance
-from app.schemas.teacher import TeacherCreate, TeacherResponse, TeacherLogin, TeacherAssignmentCreate, TeacherAssignmentResponse
+from app.schemas.teacher import TeacherCreate, TeacherResponse, TeacherLogin, TeacherAssignmentCreate, TeacherAssignmentResponse, TeacherCredentialsUpdate
 from app.security.password import hash_password, verify_password
 from app.security.jwt import create_access_token
 from app.services.attendance_service import set_attendance_status
@@ -44,10 +44,44 @@ def list_teachers(db: Session = Depends(get_db), admin: Admin = Depends(get_curr
     return db.query(Teacher).filter(Teacher.college_id == admin.college_id).order_by(Teacher.name).all()
 
 
+@router.put("/{teacher_id}/credentials", response_model=TeacherResponse)
+def update_teacher_credentials(teacher_id: int, data: TeacherCredentialsUpdate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id, Teacher.college_id == admin.college_id).first()
+    if teacher is None:
+        raise HTTPException(404, "Teacher not found.")
+
+    if data.username is not None:
+        username = data.username.strip()
+        if not username:
+            raise HTTPException(400, "Username cannot be empty.")
+        existing_teacher = db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.username == username, Teacher.id != teacher.id).first()
+        existing_admin = db.query(Admin).filter(Admin.college_id == admin.college_id, Admin.username == username).first()
+        if existing_teacher or existing_admin:
+            raise HTTPException(409, "That username is already used in this college.")
+        teacher.username = username
+
+    if data.email is not None:
+        email = str(data.email).strip()
+        existing = db.query(Teacher).filter(Teacher.college_id == admin.college_id, Teacher.email == email, Teacher.id != teacher.id).first()
+        if existing:
+            raise HTTPException(409, "That teacher email is already used in this college.")
+        teacher.email = email
+
+    if data.password is not None:
+        if len(data.password) < 8:
+            raise HTTPException(400, "Password must be at least 8 characters.")
+        teacher.password_hash = hash_password(data.password)
+
+    if data.username is None and data.email is None and data.password is None:
+        raise HTTPException(400, "Provide at least one credential to update.")
+
+    db.commit()
+    db.refresh(teacher)
+    return teacher
+
+
 @router.post("/login")
 def login(data: TeacherLogin, db: Session = Depends(get_db)):
-    # Keep this endpoint compatible with the unified /auth/login flow. The
-    # frontend uses /auth/login so admins and teachers share one login screen.
     user, role = authenticate_user(db, data.college_slug, data.username, data.password)
     if user is None or role != "teacher":
         raise HTTPException(status_code=401, detail="Invalid username or password")
