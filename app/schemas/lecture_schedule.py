@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import date, time
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -9,9 +9,12 @@ class LectureScheduleCreate(BaseModel):
     department: str | None = None
     class_name: str | None = None
     section: str | None = None
+    teacher_id: int | None = None
     day_of_week: int
     start_time: time
     end_time: time
+    effective_start_date: date | None = None
+    effective_end_date: date | None = None
 
     @field_validator("subject")
     @classmethod
@@ -36,11 +39,20 @@ class LectureScheduleCreate(BaseModel):
             raise ValueError("End time must be after start time.")
         return end_time
 
+    @field_validator("effective_end_date")
+    @classmethod
+    def validate_effective_dates(cls, end_date: date | None, info) -> date | None:
+        start_date = info.data.get("effective_start_date")
+        if start_date is not None and end_date is not None and end_date < start_date:
+            raise ValueError("Effective end date must be on or after the start date.")
+        return end_date
+
 
 class LectureScheduleResponse(BaseModel):
     id: int
     college_id: int
     class_section_id: int | None = None
+    teacher_id: int | None = None
     subject: str
     department: str | None = None
     class_name: str | None = None
@@ -48,5 +60,7 @@ class LectureScheduleResponse(BaseModel):
     day_of_week: int
     start_time: time
     end_time: time
+    effective_start_date: date | None = None
+    effective_end_date: date | None = None
 
     model_config = ConfigDict(from_attributes=True)

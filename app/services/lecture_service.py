@@ -62,13 +62,8 @@ def _commit_lecture(db: Session, lecture: Lecture):
         return lecture
     except IntegrityError as exc:
         db.rollback()
-        # The database constraint protects against two requests creating the
-        # same lecture at the same time, even if both passed the overlap check.
         if "uq_college_lecture" in str(exc.orig):
-            raise ValueError(
-                "This lecture already exists for this college, date, subject and start time. "
-                "Please choose a different time or lecture."
-            ) from exc
+            raise ValueError("This lecture already exists for this college, date, subject and start time. Please choose a different time or lecture.") from exc
         raise
 
 
@@ -76,12 +71,8 @@ def create_lecture(db: Session, college_id: int, data: LectureCreate):
     _validate_time_range(data.start_time, data.end_time)
     class_section = _resolve_class(db, college_id, data)
     teacher = _resolve_teacher(db, college_id, data.teacher_id)
-
     if _has_overlap(db, college_id, class_section.id, data.lecture_date, data.start_time, data.end_time):
-        raise ValueError(
-            "This class already has a lecture during this time. "
-            "Please choose a different time."
-        )
+        raise ValueError("This class already has a lecture during this time. Please choose a different time.")
 
     existing = db.query(Lecture).filter(
         Lecture.college_id == college_id,
@@ -92,9 +83,7 @@ def create_lecture(db: Session, college_id: int, data: LectureCreate):
         Lecture.status != "Cancelled",
     ).first()
     if existing:
-        raise ValueError(
-            "This lecture already exists for the selected class, date, subject and start time."
-        )
+        raise ValueError("This lecture already exists for the selected class, date, subject and start time.")
 
     lecture = Lecture(
         college_id=college_id,
@@ -111,8 +100,13 @@ def create_lecture(db: Session, college_id: int, data: LectureCreate):
     return _commit_lecture(db, lecture)
 
 
-def get_lectures(db: Session, college_id: int):
-    return db.query(Lecture).filter(Lecture.college_id == college_id).order_by(Lecture.lecture_date.desc(), Lecture.start_time.asc()).all()
+def get_lectures(db: Session, college_id: int, start_date=None, end_date=None):
+    query = db.query(Lecture).filter(Lecture.college_id == college_id)
+    if start_date is not None:
+        query = query.filter(Lecture.lecture_date >= start_date)
+    if end_date is not None:
+        query = query.filter(Lecture.lecture_date <= end_date)
+    return query.order_by(Lecture.lecture_date.asc(), Lecture.start_time.asc()).all()
 
 
 def get_lecture(db: Session, lecture_id: int, college_id: int):
@@ -155,10 +149,7 @@ def update_lecture(db: Session, lecture: Lecture, data: LectureUpdate):
     except IntegrityError as exc:
         db.rollback()
         if "uq_college_lecture" in str(exc.orig):
-            raise ValueError(
-                "Another lecture already uses this subject, date and start time. "
-                "Please choose a different time or lecture."
-            ) from exc
+            raise ValueError("Another lecture already uses this subject, date and start time. Please choose a different time or lecture.") from exc
         raise
 
 
