@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.database.dependency import get_db
+app.database.dependency import get_db
 from app.dependencies.auth import get_current_admin
 from app.dependencies.teacher_auth import get_current_teacher
 from app.models.admin import Admin
@@ -15,6 +15,7 @@ from app.security.password import hash_password, verify_password
 from app.security.jwt import create_access_token
 from app.services.attendance_service import set_attendance_status
 from app.services.auth_service import authenticate_user
+from app.utils.timezone import now_local
 
 router = APIRouter(prefix="/teachers", tags=["Teachers"])
 
@@ -26,6 +27,16 @@ def teacher_can_access_lecture(db: Session, teacher: Teacher, lecture_id: int):
     if lecture.teacher_id != teacher.id and assigned is None: raise HTTPException(403, "You are not assigned to this lecture or class.")
     if lecture.status == "Cancelled": raise HTTPException(400, "This lecture has been cancelled. Attendance cannot be marked.")
     return lecture
+
+
+def validate_teacher_attendance_time(lecture: Lecture):
+    now = now_local()
+    if lecture.lecture_date != now.date():
+        raise HTTPException(400, "Attendance can only be marked during the lecture.")
+    if now.time() < lecture.start_time:
+        raise HTTPException(400, "This lecture has not started yet. Attendance cannot be marked.")
+    if now.time() > lecture.end_time:
+        raise HTTPException(400, "This lecture has ended. Attendance cannot be marked.")
 
 
 @router.post("", response_model=TeacherResponse, status_code=status.HTTP_201_CREATED)
@@ -126,6 +137,7 @@ def lecture_attendance(lecture_id: int, teacher: Teacher = Depends(get_current_t
 @router.post("/me/lectures/{lecture_id}/attendance")
 def mark_attendance(lecture_id: int, student_id: int, status_value: str, teacher: Teacher = Depends(get_current_teacher), db: Session = Depends(get_db)):
     lecture = teacher_can_access_lecture(db, teacher, lecture_id)
+    validate_teacher_attendance_time(lecture)
     student = db.query(Student).filter(Student.id == student_id, Student.college_id == teacher.college_id, Student.class_section_id == lecture.class_section_id).first()
     if student is None: raise HTTPException(400, "Student does not belong to this lecture's class.")
     normalized = status_value.strip().title()
@@ -138,6 +150,7 @@ def mark_attendance(lecture_id: int, student_id: int, status_value: str, teacher
 @router.post("/me/lectures/{lecture_id}/mark-all")
 def mark_all(lecture_id: int, status_value: str, teacher: Teacher = Depends(get_current_teacher), db: Session = Depends(get_db)):
     lecture = teacher_can_access_lecture(db, teacher, lecture_id)
+    validate_teacher_attendance_time(lecture)
     normalized = status_value.strip().title()
     if normalized not in {"Present", "Absent"}: raise HTTPException(400, "Status must be Present or Absent.")
     students = db.query(Student).filter(Student.college_id == teacher.college_id, Student.class_section_id == lecture.class_section_id).all()
