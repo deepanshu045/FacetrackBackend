@@ -93,7 +93,20 @@ def _lecture_payload(lecture):
         "date": lecture.lecture_date.isoformat(),
         "start_time": lecture.start_time.isoformat(),
         "end_time": lecture.end_time.isoformat(),
+        "class_name": lecture.class_name,
+        "section": lecture.section,
+        "department": lecture.department,
     }
+
+
+@router.get("/college/access-code/{access_code}/active-lecture/{student_id}")
+def get_active_lecture_public(access_code: str, student_id: int, db: Session = Depends(get_db)):
+    college = _college_from_access_code(access_code, db)
+    student = db.query(Student).filter(Student.id == student_id, Student.college_id == college.id).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found in this college.")
+    lecture = get_active_lecture(db, student.id)
+    return {"active": lecture is not None, "lecture": _lecture_payload(lecture) if lecture else None}
 
 
 @router.post("/college/{college_slug}/mark-attendance")
