@@ -4,9 +4,9 @@ Run from the repository root:
     python -m scripts.seed_demo
 
 The script creates/updates one demo college and its demo users, classes,
-students, lectures, assignments, and attendance. Demo lectures are rebuilt
-on every run so their active/upcoming windows are always relative to the time
-at which the seed is executed.
+students, teacher assignments, weekly schedules, demo lectures, and attendance.
+Demo lectures are rebuilt on every run so their timing windows are relative to
+the time at which the seed is executed.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from app.models.attendance import Attendance
 from app.models.class_section import ClassSection
 from app.models.college import College
 from app.models.lecture import Lecture
+from app.models.lecture_schedule import LectureSchedule
 from app.models.student import Student
 from app.models.teacher import Teacher, TeacherAssignment
 from app.security.password import hash_password
@@ -51,6 +52,22 @@ LECTURE_SUBJECTS = {
     "cancelled": "Demo - Cancelled Lecture",
 }
 
+# Python weekday: Monday=0 ... Sunday=6.
+# These are the recurring demo classes visible in the weekly timetable.
+WEEKLY_SCHEDULE_DEFINITIONS = (
+    # teacher index, class index, subject, weekday, start, end
+    (0, 0, "Data Structures", 0, time(9, 0), time(10, 0)),
+    (1, 0, "Database Management", 0, time(11, 0), time(12, 0)),
+    (2, 0, "Python Programming", 1, time(9, 0), time(10, 0)),
+    (0, 1, "Computer Networks", 1, time(11, 0), time(12, 0)),
+    (1, 1, "Web Development", 2, time(9, 0), time(10, 0)),
+    (2, 1, "Operating Systems", 2, time(11, 0), time(12, 0)),
+    (0, 2, "Software Engineering", 3, time(9, 0), time(10, 0)),
+    (1, 2, "Computer Architecture", 4, time(11, 0), time(12, 0)),
+    (2, 2, "Mathematics", 4, time(14, 0), time(15, 0)),
+    (0, 0, "Python Lab", 5, time(10, 0), time(12, 0)),
+)
+
 
 def get_or_create_college(db: Session) -> College:
     college = db.query(College).filter(College.slug == COLLEGE_SLUG).first()
@@ -65,11 +82,10 @@ def get_or_create_college(db: Session) -> College:
 
 
 def get_or_create_admin(db: Session, college: College) -> Admin:
-    admin = (
-        db.query(Admin)
-        .filter(Admin.college_id == college.id, Admin.username == ADMIN_USERNAME)
-        .first()
-    )
+    admin = db.query(Admin).filter(
+        Admin.college_id == college.id,
+        Admin.username == ADMIN_USERNAME,
+    ).first()
     if admin is None:
         admin = Admin(
             college_id=college.id,
@@ -89,11 +105,10 @@ def get_or_create_admin(db: Session, college: College) -> Admin:
 def get_or_create_teachers(db: Session, college: College) -> list[Teacher]:
     teachers: list[Teacher] = []
     for username, name, email in TEACHER_DEFINITIONS:
-        teacher = (
-            db.query(Teacher)
-            .filter(Teacher.college_id == college.id, Teacher.username == username)
-            .first()
-        )
+        teacher = db.query(Teacher).filter(
+            Teacher.college_id == college.id,
+            Teacher.username == username,
+        ).first()
         if teacher is None:
             teacher = Teacher(
                 college_id=college.id,
@@ -117,16 +132,12 @@ def get_or_create_teachers(db: Session, college: College) -> list[Teacher]:
 def get_or_create_classes(db: Session, college: College) -> list[ClassSection]:
     classes: list[ClassSection] = []
     for department, class_name, section in CLASS_DEFINITIONS:
-        class_section = (
-            db.query(ClassSection)
-            .filter(
-                ClassSection.college_id == college.id,
-                ClassSection.department == department,
-                ClassSection.class_name == class_name,
-                ClassSection.section == section,
-            )
-            .first()
-        )
+        class_section = db.query(ClassSection).filter(
+            ClassSection.college_id == college.id,
+            ClassSection.department == department,
+            ClassSection.class_name == class_name,
+            ClassSection.section == section,
+        ).first()
         if class_section is None:
             class_section = ClassSection(
                 college_id=college.id,
@@ -142,22 +153,60 @@ def get_or_create_classes(db: Session, college: College) -> list[ClassSection]:
 
 def upsert_assignments(db: Session, teachers: list[Teacher], classes: list[ClassSection]) -> None:
     for teacher, class_section in zip(teachers, classes):
-        assignment = (
-            db.query(TeacherAssignment)
-            .filter(
-                TeacherAssignment.teacher_id == teacher.id,
-                TeacherAssignment.class_section_id == class_section.id,
-            )
-            .first()
-        )
+        assignment = db.query(TeacherAssignment).filter(
+            TeacherAssignment.teacher_id == teacher.id,
+            TeacherAssignment.class_section_id == class_section.id,
+        ).first()
         if assignment is None:
-            db.add(
-                TeacherAssignment(
-                    teacher_id=teacher.id,
-                    class_section_id=class_section.id,
-                )
-            )
+            db.add(TeacherAssignment(
+                teacher_id=teacher.id,
+                class_section_id=class_section.id,
+            ))
     db.flush()
+
+
+def upsert_weekly_schedules(
+    db: Session,
+    college: College,
+    teachers: list[Teacher],
+    classes: list[ClassSection],
+) -> list[LectureSchedule]:
+    schedules: list[LectureSchedule] = []
+    for teacher_index, class_index, subject, weekday, start_time, end_time in WEEKLY_SCHEDULE_DEFINITIONS:
+        teacher = teachers[teacher_index]
+        class_section = classes[class_index]
+        schedule = db.query(LectureSchedule).filter(
+            LectureSchedule.college_id == college.id,
+            LectureSchedule.class_section_id == class_section.id,
+            LectureSchedule.day_of_week == weekday,
+            LectureSchedule.subject == subject,
+            LectureSchedule.start_time == start_time,
+        ).first()
+        if schedule is None:
+            schedule = LectureSchedule(
+                college_id=college.id,
+                class_section_id=class_section.id,
+                teacher_id=teacher.id,
+                subject=subject,
+                department=class_section.department,
+                class_name=class_section.class_name,
+                section=class_section.section,
+                day_of_week=weekday,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            db.add(schedule)
+        else:
+            schedule.teacher_id = teacher.id
+            schedule.end_time = end_time
+            schedule.department = class_section.department
+            schedule.class_name = class_section.class_name
+            schedule.section = class_section.section
+            schedule.effective_start_date = None
+            schedule.effective_end_date = None
+        schedules.append(schedule)
+    db.flush()
+    return schedules
 
 
 def upsert_students(db: Session, college: College, classes: list[ClassSection]) -> list[Student]:
@@ -170,16 +219,14 @@ def upsert_students(db: Session, college: College, classes: list[ClassSection]) 
         "Sakshi Kale", "Tanmay Sane", "Uday Shinde", "Vaishnavi Gawde", "Vedant Joshi",
         "Yash Tiwari", "Zoya Sheikh", "Aditya Bhosale", "Neha Salunkhe", "Rahul Chavan",
     )
-
     for index, name in enumerate(names, start=1):
         class_section = classes[(index - 1) // 10]
         roll_no = f"DEMO{index:03d}"
         email = f"student{index:02d}@demo.jvm.edu"
-        student = (
-            db.query(Student)
-            .filter(Student.college_id == college.id, Student.roll_no == roll_no)
-            .first()
-        )
+        student = db.query(Student).filter(
+            Student.college_id == college.id,
+            Student.roll_no == roll_no,
+        ).first()
         if student is None:
             student = Student(
                 college_id=college.id,
@@ -206,69 +253,36 @@ def upsert_students(db: Session, college: College, classes: list[ClassSection]) 
     return students
 
 
-def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher], classes: list[ClassSection]) -> dict[str, Lecture]:
-    # Only demo lectures are removed. Real college data is never touched.
-    old_lectures = (
-        db.query(Lecture)
-        .filter(
-            Lecture.college_id == college.id,
-            Lecture.subject.in_(list(LECTURE_SUBJECTS.values())),
-        )
-        .all()
-    )
+def rebuild_demo_lectures(
+    db: Session,
+    college: College,
+    teachers: list[Teacher],
+    classes: list[ClassSection],
+) -> dict[str, Lecture]:
+    old_lectures = db.query(Lecture).filter(
+        Lecture.college_id == college.id,
+        Lecture.subject.in_(list(LECTURE_SUBJECTS.values())),
+    ).all()
     for lecture in old_lectures:
-        db.query(Attendance).filter(Attendance.lecture_id == lecture.id).delete(synchronize_session=False)
+        db.query(Attendance).filter(
+            Attendance.lecture_id == lecture.id
+        ).delete(synchronize_session=False)
         db.delete(lecture)
     db.flush()
 
     now = now_local()
     yesterday = now.date() - timedelta(days=1)
     tomorrow = now.date() + timedelta(days=1)
-
-    # Keep the active lecture inside today's calendar boundaries, even when
-    # the seed is run near midnight. The current time is still inside it.
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
     active_start = max(now - timedelta(minutes=15), day_start)
     active_end = min(now + timedelta(minutes=30), day_end)
 
     definitions = (
-        (
-            "completed",
-            teachers[0],
-            classes[0],
-            yesterday,
-            time(10, 0),
-            time(11, 0),
-            "Completed",
-        ),
-        (
-            "active",
-            teachers[0],
-            classes[0],
-            now.date(),
-            active_start.time(),
-            active_end.time(),
-            "Scheduled",
-        ),
-        (
-            "upcoming",
-            teachers[1],
-            classes[1],
-            tomorrow,
-            time(9, 0),
-            time(10, 0),
-            "Scheduled",
-        ),
-        (
-            "cancelled",
-            teachers[2],
-            classes[2],
-            tomorrow,
-            time(11, 0),
-            time(12, 0),
-            "Cancelled",
-        ),
+        ("completed", teachers[0], classes[0], yesterday, time(10, 0), time(11, 0), "Completed"),
+        ("active", teachers[0], classes[0], now.date(), active_start.time(), active_end.time(), "Scheduled"),
+        ("upcoming", teachers[1], classes[1], tomorrow, time(9, 0), time(10, 0), "Scheduled"),
+        ("cancelled", teachers[2], classes[2], tomorrow, time(11, 0), time(12, 0), "Cancelled"),
     )
 
     lectures: dict[str, Lecture] = {}
@@ -294,35 +308,25 @@ def rebuild_demo_lectures(db: Session, college: College, teachers: list[Teacher]
 
 def seed_attendance(db: Session, students: list[Student], lectures: dict[str, Lecture]) -> int:
     created = 0
-
-    # Completed lecture: all 30 students get a deterministic mix of statuses.
     completed = lectures["completed"]
     for index, student in enumerate(students, start=1):
-        status = "Present" if index % 3 != 0 else "Absent"
-        db.add(
-            Attendance(
-                student_id=student.id,
-                lecture_id=completed.id,
-                status=status,
-                marked_at=now_local() - timedelta(days=1),
-            )
-        )
+        db.add(Attendance(
+            student_id=student.id,
+            lecture_id=completed.id,
+            status="Present" if index % 3 != 0 else "Absent",
+            marked_at=now_local() - timedelta(days=1),
+        ))
         created += 1
 
-    # Active lecture: first ten students (BCA 1A) get a smaller mixed sample.
     active = lectures["active"]
     for index, student in enumerate(students[:10], start=1):
-        status = "Present" if index % 2 else "Absent"
-        db.add(
-            Attendance(
-                student_id=student.id,
-                lecture_id=active.id,
-                status=status,
-                marked_at=now_local(),
-            )
-        )
+        db.add(Attendance(
+            student_id=student.id,
+            lecture_id=active.id,
+            status="Present" if index % 2 else "Absent",
+            marked_at=now_local(),
+        ))
         created += 1
-
     db.flush()
     return created
 
@@ -336,6 +340,7 @@ def seed_demo() -> None:
         classes = get_or_create_classes(db, college)
         db.flush()
         upsert_assignments(db, teachers, classes)
+        schedules = upsert_weekly_schedules(db, college, teachers, classes)
         students = upsert_students(db, college, classes)
         lectures = rebuild_demo_lectures(db, college, teachers, classes)
         attendance_count = seed_attendance(db, students, lectures)
@@ -349,13 +354,15 @@ def seed_demo() -> None:
             print(f"  - {teacher.username} / {DEMO_PASSWORD}")
         print(f"Classes : {len(classes)}")
         print(f"Students: {len(students)}")
-        print(f"Lectures: {len(lectures)}")
+        print(f"Weekly schedules: {len(schedules)}")
+        print(f"Demo lectures: {len(lectures)}")
         print(f"Attendance rows: {attendance_count}")
         print("\nTiming checks:")
         print("  - active    : now is inside the lecture window")
         print("  - completed : lecture has already ended")
         print("  - upcoming  : lecture has not started")
         print("  - cancelled : attendance is blocked by status")
+        print("  - weekly schedule: recurring Monday-Saturday timetable is populated")
     except Exception:
         db.rollback()
         raise
