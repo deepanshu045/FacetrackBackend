@@ -1,8 +1,6 @@
 import logging
 import re
-import threading
 from contextlib import asynccontextmanager
-from datetime import datetime
 from fastapi import FastAPI
 from sqlalchemy import inspect, text
 from app.database.base import Base
@@ -25,8 +23,7 @@ from app.models.admin import Admin
 from app.models.college import College
 from app.schemas.auth import AdminCreate
 from app.services.auth_service import create_admin
-from app.config import ABSENCE_CHECK_HOUR, CORS_ORIGINS
-from app.services.absence_notification_service import send_attendance_summary_notifications
+from app.config import CORS_ORIGINS
 
 logger = logging.getLogger(__name__)
 
@@ -118,21 +115,9 @@ def create_default_admin():
         if exists is None: create_admin(session, AdminCreate(username="admin", name="Administrator", email="admin@example.com", password="admin123"), college.id)
 
 
-def absence_email_scheduler(stop_event: threading.Event):
-    last_run_date = None
-    while not stop_event.is_set():
-        now = datetime.now()
-        if now.hour >= ABSENCE_CHECK_HOUR and now.date() != last_run_date:
-            try:
-                with SessionLocal() as session: send_attendance_summary_notifications(session, now.date())
-                last_run_date = now.date()
-            except Exception: logger.exception("Unable to send absence notification emails")
-        stop_event.wait(30)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    stop_event = threading.Event(); scheduler = threading.Thread(target=absence_email_scheduler, args=(stop_event,), daemon=True, name="absence-email-scheduler"); scheduler.start(); yield; stop_event.set(); scheduler.join(timeout=2)
+    yield
 
 
 Base.metadata.create_all(bind=engine)
