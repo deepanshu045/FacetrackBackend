@@ -19,8 +19,12 @@ from app.security.password import verify_password
 def create_admin(db: Session, admin: AdminCreate, college_id: int):
     username = admin.username.strip()
     email = str(admin.email).strip().lower()
-    existing = db.query(Admin).filter((Admin.username == username) | (Admin.email == email)).first()
-    if existing:
+    existing_admin = db.query(Admin).filter((Admin.username == username) | (Admin.email == email)).first()
+    if existing_admin:
+        return None
+    # Admins and teachers share the same login screen, so usernames must be
+    # unique across both roles within a college.
+    if db.query(Teacher).filter(Teacher.college_id == college_id, Teacher.username == username).first():
         return None
     new_admin = Admin(
         college_id=college_id,
