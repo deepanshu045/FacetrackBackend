@@ -8,6 +8,12 @@ class TeacherCreate(BaseModel):
     password: str
 
 
+class TeacherCredentialsUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None
+    password: str | None = None
+
+
 class TeacherResponse(BaseModel):
     id: int
     college_id: int
