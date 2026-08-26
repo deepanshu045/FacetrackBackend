@@ -25,7 +25,7 @@ def list_notifications(
             Student.college_id == admin.college_id,
             Lecture.college_id == admin.college_id,
         )
-        .order_by(Attendance.marked_at.desc())
+        .order_by(Lecture.lecture_date.desc(), Attendance.marked_at.desc())
         .limit(limit)
         .all()
     )
