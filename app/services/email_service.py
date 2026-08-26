@@ -5,7 +5,7 @@ import logging
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.config import BREVO_API_KEY, BREVO_SENDER
+from app.config import BREVO_API_KEY, BREVO_SENDER_EMAIL, BREVO_SENDER_NAME
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class EmailDeliveryError(RuntimeError):
 
 
 def is_email_configured() -> bool:
-    return bool(BREVO_API_KEY and BREVO_SENDER)
+    return bool(BREVO_API_KEY and BREVO_SENDER_EMAIL)
 
 
 def send_email(*, recipient: str, subject: str, text: str) -> None:
@@ -26,7 +26,7 @@ def send_email(*, recipient: str, subject: str, text: str) -> None:
         raise EmailDeliveryError("Brevo email is not configured.")
 
     payload = {
-        "sender": {"email": BREVO_SENDER},
+        "sender": {"email": BREVO_SENDER_EMAIL, "name": BREVO_SENDER_NAME},
         "to": [{"email": recipient}],
         "subject": subject,
         "textContent": text,
