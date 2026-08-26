@@ -10,6 +10,11 @@ class AttendanceReport(BaseModel):
     department: str
     attendance_date: date
     attendance_time: time
+    lecture_id: int | None = None
+    subject: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    status: str = "Present"
 
     class Config:
         from_attributes = True
