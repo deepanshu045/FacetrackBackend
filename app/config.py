@@ -10,8 +10,8 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-RESEND_SENDER = os.getenv("RESEND_SENDER")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+BREVO_SENDER = os.getenv("BREVO_SENDER")
 COLLEGE_APPROVAL_EMAIL = os.getenv("COLLEGE_APPROVAL_EMAIL")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
