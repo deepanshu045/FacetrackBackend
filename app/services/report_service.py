@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.student import Student
@@ -65,6 +66,61 @@ def get_student_attendance(db: Session, student_id: int, college_id: int):
         .all()
     )
     return _to_report_rows(rows)
+
+
+def get_student_attendance_summary(db: Session, student_id: int, college_id: int):
+    student = (
+        db.query(Student)
+        .filter(Student.id == student_id, Student.college_id == college_id)
+        .first()
+    )
+    if not student:
+        return None
+
+    today = today_local()
+    total_lectures = 0
+    present = 0
+
+    if student.class_section_id is not None:
+        total_lectures = (
+            db.query(func.count(Lecture.id))
+            .filter(
+                Lecture.college_id == college_id,
+                Lecture.class_section_id == student.class_section_id,
+                Lecture.lecture_date <= today,
+                Lecture.status != "Cancelled",
+            )
+            .scalar()
+            or 0
+        )
+
+        present = (
+            db.query(func.count(Attendance.id))
+            .join(Lecture, Attendance.lecture_id == Lecture.id)
+            .filter(
+                Attendance.student_id == student_id,
+                Attendance.status == "Present",
+                Lecture.college_id == college_id,
+                Lecture.class_section_id == student.class_section_id,
+                Lecture.lecture_date <= today,
+                Lecture.status != "Cancelled",
+            )
+            .scalar()
+            or 0
+        )
+
+    percentage = round((present / total_lectures) * 100) if total_lectures else 0
+
+    return {
+        "student_id": student.id,
+        "roll_no": student.roll_no,
+        "name": student.name,
+        "department": student.department,
+        "class_section_id": student.class_section_id,
+        "present": int(present),
+        "total_lectures": int(total_lectures),
+        "percentage": int(percentage),
+    }
 
 
 def get_attendance_by_date(db: Session, attendance_date, college_id: int):
