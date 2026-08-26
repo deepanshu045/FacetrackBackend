@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 
@@ -14,6 +15,9 @@ from app.config import BACKEND_URL, COLLEGE_APPROVAL_EMAIL
 from app.security.password import hash_password
 from app.services.email_service import EmailDeliveryError, is_email_configured, send_email
 from app.security.password import verify_password
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_admin(db: Session, admin: AdminCreate, college_id: int):
@@ -96,7 +100,7 @@ def start_college_registration(db: Session, registration) -> None:
             subject=f"FaceTrack - College registration approval: {pending.college_name}",
             text=(
                 "FACETRACK COLLEGE APPROVAL\n\n"
-                f"A new college has requested registration.\n\n"
+                "A new college has requested registration.\n\n"
                 f"College : {pending.college_name}\n"
                 f"College ID : {pending.college_slug}\n"
                 f"Applicant name : {pending.name}\n"
@@ -127,20 +131,54 @@ def verify_college_registration(db: Session, token: str):
         return None
     if db.query(Admin).filter(Admin.username == pending.username).first():
         return None
-    college = College(name=pending.college_name, slug=pending.college_slug, is_active=True)
+
+    # Keep the email details before deleting the pending registration.
+    college_name = pending.college_name
+    college_slug = pending.college_slug
+    applicant_name = pending.name
+    applicant_email = pending.email
+    applicant_username = pending.username
+
+    college = College(name=college_name, slug=college_slug, is_active=True)
     db.add(college)
     db.flush()
     admin = Admin(
         college_id=college.id,
-        username=pending.username,
-        name=pending.name,
-        email=pending.email,
+        username=applicant_username,
+        name=applicant_name,
+        email=applicant_email,
         password_hash=pending.password_hash,
     )
     db.add(admin)
     db.delete(pending)
     db.commit()
     db.refresh(admin)
+
+    # The account already exists at this point. If Brevo is temporarily
+    # unavailable, keep the account and log the failure instead of making the
+    # approval endpoint fail after the database transaction has succeeded.
+    try:
+        send_email(
+            recipient=applicant_email,
+            subject=f"FaceTrack - Your {college_name} account has been created",
+            text=(
+                f"Hello {applicant_name},\n\n"
+                "Your FaceTrack college account has been created successfully.\n\n"
+                f"College : {college_name}\n"
+                f"College ID : {college_slug}\n"
+                f"Username : {applicant_username}\n\n"
+                "You can now log in to FaceTrack using the password you created during registration.\n\n"
+                "For security reasons, your password is not included in this email.\n\n"
+                "Regards,\n"
+                "FaceTrack Team\n"
+            ),
+        )
+    except EmailDeliveryError:
+        logger.exception(
+            "College account was created, but the account-created email could not be sent to %s.",
+            applicant_email,
+        )
+
     return admin
 
 
