@@ -1,13 +1,14 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.dependency import get_db
-from app.schemas.report import AttendanceReport
+from app.schemas.report import AttendanceReport, StudentAttendanceSummary
 from app.services.report_service import (
     get_today_attendance,
     get_student_attendance,
+    get_student_attendance_summary,
     get_attendance_by_date,
     get_monthly_attendance,
 )
@@ -43,6 +44,21 @@ def student_report(
     admin: Admin = Depends(get_current_admin),
 ):
     return get_student_attendance(db, student_id, admin.college_id)
+
+
+@router.get(
+    "/student/{student_id}/summary",
+    response_model=StudentAttendanceSummary,
+)
+def student_attendance_summary(
+    student_id: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(get_current_admin),
+):
+    summary = get_student_attendance_summary(db, student_id, admin.college_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return summary
 
 
 @router.get(
