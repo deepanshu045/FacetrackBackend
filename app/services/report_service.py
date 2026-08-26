@@ -16,6 +16,11 @@ def _attendance_rows_to_dict(rows):
             "department": row[3],
             "attendance_date": row[4],
             "attendance_time": row[5],
+            "lecture_id": row[6] if len(row) > 6 else None,
+            "subject": row[7] if len(row) > 7 else None,
+            "start_time": row[8] if len(row) > 8 else None,
+            "end_time": row[9] if len(row) > 9 else None,
+            "status": row[10] if len(row) > 10 else "Present",
         }
         for row in rows
     ]
@@ -30,6 +35,11 @@ def _query_rows(db: Session, college_id: int):
             Student.department,
             Lecture.lecture_date,
             Attendance.marked_at,
+            Lecture.id,
+            Lecture.subject,
+            Lecture.start_time,
+            Lecture.end_time,
+            Attendance.status,
         )
         .join(Student, Attendance.student_id == Student.id)
         .join(Lecture, Attendance.lecture_id == Lecture.id)
@@ -47,6 +57,11 @@ def _to_report_rows(rows):
                 row[3],
                 row[4],
                 row[5].time(),
+                row[6],
+                row[7],
+                row[8],
+                row[9],
+                row[10] or "Present",
             )
             for row in rows
         ]
@@ -59,13 +74,54 @@ def get_today_attendance(db: Session, college_id: int):
 
 
 def get_student_attendance(db: Session, student_id: int, college_id: int):
-    rows = (
-        _query_rows(db, college_id)
-        .filter(Attendance.student_id == student_id)
-        .order_by(Lecture.lecture_date.desc(), Attendance.marked_at.desc())
+    student = (
+        db.query(Student)
+        .filter(Student.id == student_id, Student.college_id == college_id)
+        .first()
+    )
+    if not student or student.class_section_id is None:
+        return []
+
+    today = today_local()
+    lectures = (
+        db.query(Lecture)
+        .filter(
+            Lecture.college_id == college_id,
+            Lecture.class_section_id == student.class_section_id,
+            Lecture.lecture_date <= today,
+            Lecture.status != "Cancelled",
+        )
+        .order_by(Lecture.lecture_date.desc(), Lecture.start_time.desc())
         .all()
     )
-    return _to_report_rows(rows)
+
+    attendance_by_lecture = {
+        attendance.lecture_id: attendance
+        for attendance in db.query(Attendance)
+        .filter(Attendance.student_id == student_id)
+        .all()
+    }
+
+    return [
+        {
+            "student_id": student.id,
+            "roll_no": student.roll_no,
+            "name": student.name,
+            "department": student.department,
+            "attendance_date": lecture.lecture_date,
+            "attendance_time": lecture.start_time,
+            "lecture_id": lecture.id,
+            "subject": lecture.subject,
+            "start_time": lecture.start_time,
+            "end_time": lecture.end_time,
+            "status": (
+                attendance_by_lecture[lecture.id].status
+                if lecture.id in attendance_by_lecture
+                else "Absent"
+            ),
+        }
+        for lecture in lectures
+    ]
 
 
 def get_student_attendance_summary(db: Session, student_id: int, college_id: int):
