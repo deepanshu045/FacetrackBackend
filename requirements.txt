@@ -23,7 +23,6 @@ imagekitio==5.8.0
 Pillow==12.3.0
 python-jose[cryptography]
 email-validator==2.3.0
-resend>=2.0.0,<3.0.0
 gunicorn==23.0.0
 bcrypt==4.0.1
 numpy==1.24.3
