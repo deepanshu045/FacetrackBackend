@@ -148,7 +148,10 @@ def approve_college(token: str, db: Session = Depends(get_db)):
 
 @router.post("/verify-college-email", response_model=AdminResponse, status_code=201)
 def verify_college_email(token: str, db: Session = Depends(get_db)):
-    return approve_college(token, db)
+    admin = verify_college_registration(db, token)
+    if admin is None:
+        raise HTTPException(status_code=400, detail="This approval link is invalid, expired, or has already been used.")
+    return admin
 
 
 @router.post("/login", response_model=Token)
