@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import (
@@ -68,12 +69,81 @@ def register_college(payload: CollegeRegistration, db: Session = Depends(get_db)
     return {"message": "Registration submitted. The college will be created after administrator approval."}
 
 
-@router.get("/approve-college", response_model=AdminResponse, status_code=201)
+def _approval_page(title: str, message: str, success: bool) -> HTMLResponse:
+    status_color = "#166534" if success else "#b91c1c"
+    status_background = "#f0fdf4" if success else "#fef2f2"
+    icon = "✓" if success else "!"
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title} - FaceTrack</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }}
+        .card {{
+            width: min(520px, 100%);
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 40px 32px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, .08);
+        }}
+        .icon {{
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 22px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: {status_background};
+            color: {status_color};
+            font-size: 32px;
+            font-weight: 800;
+        }}
+        h1 {{ margin: 0 0 12px; font-size: 28px; letter-spacing: -.02em; }}
+        p {{ margin: 0; color: #475569; line-height: 1.7; font-size: 16px; }}
+        .brand {{ margin-top: 28px; color: #64748b; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }}
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="icon">{icon}</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <div class="brand">FaceTrack</div>
+    </main>
+</body>
+</html>"""
+    return HTMLResponse(content=html, status_code=200 if success else 400)
+
+
+@router.get("/approve-college", response_class=HTMLResponse)
 def approve_college(token: str, db: Session = Depends(get_db)):
     admin = verify_college_registration(db, token)
     if admin is None:
-        raise HTTPException(status_code=400, detail="This approval link is invalid, expired, or has already been used.")
-    return admin
+        return _approval_page(
+            "Approval link is invalid",
+            "This college approval link is invalid, expired, or has already been used.",
+            False,
+        )
+
+    return _approval_page(
+        "College approved successfully",
+        "The college account has been created successfully. A confirmation email has been sent to the registered college email address.",
+        True,
+    )
 
 
 @router.post("/verify-college-email", response_model=AdminResponse, status_code=201)
