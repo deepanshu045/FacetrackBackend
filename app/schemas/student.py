@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, model_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from typing import Optional
 
 
@@ -11,6 +11,11 @@ class StudentCreate(BaseModel):
     class_section_id: Optional[int] = None
     class_name: Optional[str] = None
     section: Optional[str] = None
+
+    @field_validator("department")
+    @classmethod
+    def normalize_department(cls, value: str):
+        return "BSc CS" if value.strip().upper() == "BCA" else value.strip()
 
     @model_validator(mode="after")
     def require_email_or_phone(self):
