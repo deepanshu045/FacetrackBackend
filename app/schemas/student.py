@@ -17,6 +17,18 @@ class StudentCreate(BaseModel):
     def normalize_department(cls, value: str):
         return "BSc CS" if value.strip().upper() == "BCA" else value.strip()
 
+    @field_validator("class_name")
+    @classmethod
+    def normalize_class_name(cls, value: Optional[str]):
+        if value is None:
+            return None
+        class_map = {
+            "FY": "FY", "SY": "SY", "TY": "TY",
+            "FIRST YEAR": "FY", "SECOND YEAR": "SY", "THIRD YEAR": "TY",
+            "1ST YEAR": "FY", "2ND YEAR": "SY", "3RD YEAR": "TY",
+        }
+        return class_map.get(value.strip().upper(), value.strip())
+
     @model_validator(mode="after")
     def require_email_or_phone(self):
         if self.email is None and self.phone_no is None:
