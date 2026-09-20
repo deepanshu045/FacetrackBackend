@@ -9,6 +9,7 @@ CLASS_YEAR_MAP = {
     "FIFTH YEAR": "5Y", "SIXTH YEAR": "6Y", "SEVENTH YEAR": "7Y", "EIGHTH YEAR": "8Y",
     "NINTH YEAR": "9Y", "TENTH YEAR": "10Y",
     "1ST YEAR": "FY", "2ND YEAR": "SY", "3RD YEAR": "TY", "4TH YEAR": "4Y",
+    "1": "FY", "2": "SY", "3": "TY",
     "5TH YEAR": "5Y", "6TH YEAR": "6Y", "7TH YEAR": "7Y", "8TH YEAR": "8Y",
     "9TH YEAR": "9Y", "10TH YEAR": "10Y",
 }
