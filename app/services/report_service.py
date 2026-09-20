@@ -73,6 +73,20 @@ def get_today_attendance(db: Session, college_id: int):
     return _to_report_rows(rows)
 
 
+def get_recent_attendance(db: Session, college_id: int, limit: int = 10):
+    rows = (
+        _query_rows(db, college_id)
+        .order_by(
+            Lecture.lecture_date.desc(),
+            Lecture.start_time.desc(),
+            Attendance.marked_at.desc(),
+        )
+        .limit(limit)
+        .all()
+    )
+    return _to_report_rows(rows)
+
+
 def get_student_attendance(db: Session, student_id: int, college_id: int):
     student = (
         db.query(Student)
