@@ -7,6 +7,7 @@ from app.database.dependency import get_db
 from app.schemas.report import AttendanceReport, StudentAttendanceSummary
 from app.services.report_service import (
     get_today_attendance,
+    get_recent_attendance,
     get_student_attendance,
     get_student_attendance_summary,
     get_attendance_by_date,
@@ -32,6 +33,19 @@ def today_report(
     admin: Admin = Depends(get_current_admin),
 ):
     return get_today_attendance(db, admin.college_id)
+
+
+@router.get(
+    "/recent",
+    response_model=list[AttendanceReport]
+)
+def recent_report(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(get_current_admin),
+):
+    limit = max(1, min(limit, 50))
+    return get_recent_attendance(db, admin.college_id, limit)
 
 
 @router.get(
