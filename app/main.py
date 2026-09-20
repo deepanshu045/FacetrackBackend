@@ -105,6 +105,12 @@ def ensure_bsc_cs_department():
                     "WHEN '2ND YEAR' THEN 'SY' "
                     "WHEN 'THIRD YEAR' THEN 'TY' "
                     "WHEN '3RD YEAR' THEN 'TY' "
+                    "WHEN 'FOURTH YEAR' THEN '4Y' "
+                    "WHEN '4TH YEAR' THEN '4Y' "
+                    "WHEN 'FIFTH YEAR' THEN '5Y' "
+                    "WHEN '5TH YEAR' THEN '5Y' "
+                    "WHEN 'SIXTH YEAR' THEN '6Y' "
+                    "WHEN '6TH YEAR' THEN '6Y' "
                     "ELSE class_name END"
                 )
             )
