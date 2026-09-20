@@ -56,6 +56,26 @@ def ensure_schedule_columns():
                 connection.exec_driver_sql("CREATE UNIQUE INDEX uq_college_weekly_schedule_v2 ON lecture_schedules (college_id, class_section_id, day_of_week, subject, start_time)")
 def ensure_attendance_columns(): add_column_if_missing("attendance", "status", "VARCHAR(10) NOT NULL DEFAULT 'Present'")
 
+def ensure_bsc_cs_department():
+    """Rename the existing BCA department to BSc CS and keep future API data normalized."""
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    with engine.begin() as connection:
+        if "students" in tables:
+            connection.execute(
+                text(
+                    "UPDATE students SET department = 'BSc CS' "
+                    "WHERE department IS NOT NULL AND UPPER(TRIM(department)) = 'BCA'"
+                )
+            )
+        if "class_sections" in tables:
+            connection.execute(
+                text(
+                    "UPDATE class_sections SET department = 'BSc CS' "
+                    "WHERE department IS NOT NULL AND UPPER(TRIM(department)) = 'BCA'"
+                )
+            )
+
 
 def ensure_admin_settings_columns():
     inspector = inspect(engine)
@@ -121,7 +141,7 @@ async def lifespan(app: FastAPI):
 
 
 Base.metadata.create_all(bind=engine)
-ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); ensure_student_class_column(); ensure_schedule_columns(); ensure_attendance_columns(); create_default_admin()
+ensure_phone_no_column(); ensure_admin_settings_columns(); ensure_multitenancy_columns(); ensure_college_access_code_column(); ensure_pending_college_registration_columns(); ensure_lecture_columns(); ensure_student_class_column(); ensure_schedule_columns(); ensure_attendance_columns(); ensure_bsc_cs_department(); create_default_admin()
 
 app = FastAPI(title="FaceTrack API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
