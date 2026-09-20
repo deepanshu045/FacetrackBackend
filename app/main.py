@@ -75,6 +75,33 @@ def ensure_bsc_cs_department():
                     "WHERE department IS NOT NULL AND UPPER(TRIM(department)) = 'BCA'"
                 )
             )
+            connection.execute(
+                text(
+                    "UPDATE class_sections SET class_name = "
+                    "CASE UPPER(TRIM(class_name)) "
+                    "WHEN 'FIRST YEAR' THEN 'FY' "
+                    "WHEN '1ST YEAR' THEN 'FY' "
+                    "WHEN 'SECOND YEAR' THEN 'SY' "
+                    "WHEN '2ND YEAR' THEN 'SY' "
+                    "WHEN 'THIRD YEAR' THEN 'TY' "
+                    "WHEN '3RD YEAR' THEN 'TY' "
+                    "ELSE class_name END"
+                )
+            )
+        if "students" in tables:
+            connection.execute(
+                text(
+                    "UPDATE students SET class_name = "
+                    "CASE UPPER(TRIM(class_name)) "
+                    "WHEN 'FIRST YEAR' THEN 'FY' "
+                    "WHEN '1ST YEAR' THEN 'FY' "
+                    "WHEN 'SECOND YEAR' THEN 'SY' "
+                    "WHEN '2ND YEAR' THEN 'SY' "
+                    "WHEN 'THIRD YEAR' THEN 'TY' "
+                    "WHEN '3RD YEAR' THEN 'TY' "
+                    "ELSE class_name END"
+                )
+            )
 
 
 def ensure_admin_settings_columns():
