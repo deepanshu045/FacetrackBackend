@@ -10,3 +10,5 @@ from app.models.lecture_schedule import LectureSchedule
 from app.models.college_closure import CollegeClosure
 from app.models.class_section import ClassSection
 from app.models.teacher import Teacher, TeacherAssignment
+
+from app.models.ngo_attendance import NGOAttendance
