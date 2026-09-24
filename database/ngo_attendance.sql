@@ -1,0 +1,23 @@
+CREATE TABLE ngo_attendance (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    college_id INT NOT NULL,
+    student_id INT NOT NULL,
+    class_section_id INT NOT NULL,
+    attendance_date DATE NOT NULL,
+    status VARCHAR(10) NOT NULL DEFAULT 'Present',
+    marked_by_admin_id INT NULL,
+    marked_by_teacher_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_ngo_attendance_student_class_date UNIQUE (college_id, student_id, class_section_id, attendance_date),
+    CONSTRAINT ck_ngo_attendance_status CHECK (status IN ('Present', 'Absent')),
+    CONSTRAINT fk_ngo_attendance_college FOREIGN KEY (college_id) REFERENCES colleges(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ngo_attendance_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ngo_attendance_class FOREIGN KEY (class_section_id) REFERENCES class_sections(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ngo_attendance_admin FOREIGN KEY (marked_by_admin_id) REFERENCES admins(id) ON DELETE SET NULL,
+    CONSTRAINT fk_ngo_attendance_teacher FOREIGN KEY (marked_by_teacher_id) REFERENCES teachers(id) ON DELETE SET NULL,
+    INDEX ix_ngo_attendance_college (college_id),
+    INDEX ix_ngo_attendance_student (student_id),
+    INDEX ix_ngo_attendance_class (class_section_id),
+    INDEX ix_ngo_attendance_date (attendance_date)
+);
