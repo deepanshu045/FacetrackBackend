@@ -11,8 +11,91 @@ from app.models.ngo_attendance import NGOAttendance
 from app.models.student import Student
 from app.models.teacher import TeacherAssignment
 from app.schemas.ngo_attendance import NGOAttendanceSaveRequest
+from app.schemas.class_section import ClassSectionCreate
+from app.schemas.student import StudentCreate
+from app.services.student_service import create_student
 
 router = APIRouter(prefix="/ngo", tags=["NGO Attendance"])
+
+
+
+
+def require_ngo_admin(user_context: dict):
+    if user_context["role"] != "admin":
+        raise HTTPException(403, "Only an admin can create classes or students.")
+
+
+@router.post("/classes")
+def create_ngo_class(
+    payload: ClassSectionCreate,
+    db: Session = Depends(get_db),
+    user_context: dict = Depends(get_current_ngo_user),
+):
+    require_ngo_admin(user_context)
+    college_id = user_context["college_id"]
+
+    existing = db.query(ClassSection).filter(
+        ClassSection.college_id == college_id,
+        ClassSection.department == payload.department,
+        ClassSection.class_name == payload.class_name,
+        ClassSection.section == payload.section,
+    ).first()
+    if existing:
+        raise HTTPException(409, "This class and section already exists.")
+
+    item = ClassSection(
+        college_id=college_id,
+        department=payload.department,
+        class_name=payload.class_name,
+        section=payload.section,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    return {
+        "success": True,
+        "message": "Class created successfully.",
+        "class": {
+            "id": item.id,
+            "department": item.department,
+            "class_name": item.class_name,
+            "section": item.section,
+        },
+    }
+
+
+@router.post("/students")
+def create_ngo_student(
+    payload: StudentCreate,
+    db: Session = Depends(get_db),
+    user_context: dict = Depends(get_current_ngo_user),
+):
+    require_ngo_admin(user_context)
+
+    try:
+        student = create_student(db, payload, user_context["college_id"])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    if student is None:
+        raise HTTPException(409, "A student with this roll number already exists.")
+
+    return {
+        "success": True,
+        "message": "Student created successfully.",
+        "student": {
+            "id": student.id,
+            "roll_no": student.roll_no,
+            "name": student.name,
+            "email": student.email,
+            "phone_no": student.phone_no,
+            "department": student.department,
+            "class_section_id": student.class_section_id,
+            "class_name": student.class_name,
+            "section": student.section,
+        },
+    }
 
 
 def get_allowed_class(db: Session, user_context: dict, class_section_id: int) -> ClassSection:
