@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
-
 from app.database.base import Base
-
 
 class NGOStudent(Base):
     __tablename__ = "ngo_students"
@@ -19,8 +17,5 @@ class NGOStudent(Base):
     ngo_class = relationship("NGOClass")
 
     __table_args__ = (
-        UniqueConstraint(
-            "admin_id", "roll_no",
-            name="uq_ngo_admin_student_roll_no",
-        ),
+        UniqueConstraint("admin_id", "roll_no", name="uq_ngo_admin_student_roll_no"),
     )
