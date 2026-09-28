@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
-
 from app.database.base import Base
-
 
 class NGOClass(Base):
     __tablename__ = "ngo_classes"
@@ -16,8 +14,6 @@ class NGOClass(Base):
     admin = relationship("Admin")
 
     __table_args__ = (
-        UniqueConstraint(
-            "admin_id", "department", "class_name", "section",
-            name="uq_ngo_admin_class_section",
-        ),
+        UniqueConstraint("admin_id", "department", "class_name", "section",
+                         name="uq_ngo_admin_class_section"),
     )
