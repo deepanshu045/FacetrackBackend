@@ -5,46 +5,47 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database.dependency import get_db
-from app.dependencies.ngo_auth import get_current_ngo_user
-from app.models.class_section import ClassSection
+from app.dependencies.auth import get_current_admin
+from app.models.admin import Admin
+from app.models.ngo_class import NGOClass
+from app.models.ngo_student import NGOStudent
 from app.models.ngo_attendance import NGOAttendance
-from app.models.student import Student
-from app.models.teacher import TeacherAssignment
-from app.schemas.ngo_attendance import NGOAttendanceSaveRequest
-from app.schemas.class_section import ClassSectionCreate
-from app.schemas.student import StudentCreate
-from app.services.student_service import create_student
+from app.schemas.ngo_attendance import (
+    NGOClassCreate,
+    NGOStudentCreate,
+    NGOAttendanceSaveRequest,
+)
 
-router = APIRouter(prefix="/ngo", tags=["NGO Attendance"])
-
+router = APIRouter(prefix="/ngo", tags=["NGO"])
 
 
-
-def require_ngo_admin(user_context: dict):
-    if user_context["role"] != "admin":
-        raise HTTPException(403, "Only an admin can create classes or students.")
+def get_ngo_class(db: Session, admin: Admin, ngo_class_id: int) -> NGOClass:
+    item = db.query(NGOClass).filter(
+        NGOClass.id == ngo_class_id,
+        NGOClass.admin_id == admin.id,
+    ).first()
+    if item is None:
+        raise HTTPException(404, "NGO class not found.")
+    return item
 
 
 @router.post("/classes")
 def create_ngo_class(
-    payload: ClassSectionCreate,
+    payload: NGOClassCreate,
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    require_ngo_admin(user_context)
-    college_id = user_context["college_id"]
-
-    existing = db.query(ClassSection).filter(
-        ClassSection.college_id == college_id,
-        ClassSection.department == payload.department,
-        ClassSection.class_name == payload.class_name,
-        ClassSection.section == payload.section,
+    existing = db.query(NGOClass).filter(
+        NGOClass.admin_id == admin.id,
+        NGOClass.department == payload.department,
+        NGOClass.class_name == payload.class_name,
+        NGOClass.section == payload.section,
     ).first()
     if existing:
-        raise HTTPException(409, "This class and section already exists.")
+        raise HTTPException(409, "This NGO class and section already exists.")
 
-    item = ClassSection(
-        college_id=college_id,
+    item = NGOClass(
+        admin_id=admin.id,
         department=payload.department,
         class_name=payload.class_name,
         section=payload.section,
@@ -55,7 +56,7 @@ def create_ngo_class(
 
     return {
         "success": True,
-        "message": "Class created successfully.",
+        "message": "NGO class created successfully.",
         "class": {
             "id": item.id,
             "department": item.department,
@@ -65,74 +66,19 @@ def create_ngo_class(
     }
 
 
-@router.post("/students")
-def create_ngo_student(
-    payload: StudentCreate,
-    db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
-):
-    require_ngo_admin(user_context)
-
-    try:
-        student = create_student(db, payload, user_context["college_id"])
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-
-    if student is None:
-        raise HTTPException(409, "A student with this roll number already exists.")
-
-    return {
-        "success": True,
-        "message": "Student created successfully.",
-        "student": {
-            "id": student.id,
-            "roll_no": student.roll_no,
-            "name": student.name,
-            "email": student.email,
-            "phone_no": student.phone_no,
-            "department": student.department,
-            "class_section_id": student.class_section_id,
-            "class_name": student.class_name,
-            "section": student.section,
-        },
-    }
-
-
-def get_allowed_class(db: Session, user_context: dict, class_section_id: int) -> ClassSection:
-    college_id = user_context["college_id"]
-    class_section = db.query(ClassSection).filter(
-        ClassSection.id == class_section_id,
-        ClassSection.college_id == college_id,
-    ).first()
-    if class_section is None:
-        raise HTTPException(404, "Class section not found.")
-
-    if user_context["role"] == "teacher":
-        teacher_id = user_context["user"].id
-        assigned = db.query(TeacherAssignment).filter(
-            TeacherAssignment.teacher_id == teacher_id,
-            TeacherAssignment.class_section_id == class_section_id,
-        ).first()
-        if assigned is None:
-            raise HTTPException(403, "You are not assigned to this class.")
-
-    return class_section
-
-
 @router.get("/classes")
 def list_ngo_classes(
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    query = db.query(ClassSection).filter(ClassSection.college_id == user_context["college_id"])
+    classes = db.query(NGOClass).filter(
+        NGOClass.admin_id == admin.id
+    ).order_by(
+        NGOClass.department,
+        NGOClass.class_name,
+        NGOClass.section,
+    ).all()
 
-    if user_context["role"] == "teacher":
-        assigned_ids = db.query(TeacherAssignment.class_section_id).filter(
-            TeacherAssignment.teacher_id == user_context["user"].id
-        ).subquery()
-        query = query.filter(ClassSection.id.in_(assigned_ids))
-
-    classes = query.order_by(ClassSection.department, ClassSection.class_name, ClassSection.section).all()
     return [
         {
             "id": item.id,
@@ -144,26 +90,71 @@ def list_ngo_classes(
     ]
 
 
-@router.get("/classes/{class_section_id}/students")
-def list_ngo_class_students(
-    class_section_id: int,
+@router.post("/students")
+def create_ngo_student(
+    payload: NGOStudentCreate,
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    class_section = get_allowed_class(db, user_context, class_section_id)
-    students = db.query(Student).filter(
-        Student.college_id == user_context["college_id"],
-        Student.class_section_id == class_section.id,
-    ).order_by(Student.name, Student.id).all()
+    ngo_class = get_ngo_class(db, admin, payload.ngo_class_id)
+
+    existing = db.query(NGOStudent).filter(
+        NGOStudent.admin_id == admin.id,
+        NGOStudent.roll_no == payload.roll_no,
+    ).first()
+    if existing:
+        raise HTTPException(409, "A student with this roll number already exists.")
+
+    student = NGOStudent(
+        admin_id=admin.id,
+        ngo_class_id=ngo_class.id,
+        roll_no=payload.roll_no,
+        name=payload.name,
+        email=payload.email,
+        phone_no=payload.phone_no,
+    )
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+
+    return {
+        "success": True,
+        "message": "NGO student created successfully.",
+        "student": {
+            "id": student.id,
+            "roll_no": student.roll_no,
+            "name": student.name,
+            "email": student.email,
+            "phone_no": student.phone_no,
+            "ngo_class_id": student.ngo_class_id,
+            "class_name": ngo_class.class_name,
+            "section": ngo_class.section,
+            "department": ngo_class.department,
+        },
+    }
+
+
+@router.get("/classes/{ngo_class_id}/students")
+def list_ngo_class_students(
+    ngo_class_id: int,
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(get_current_admin),
+):
+    get_ngo_class(db, admin, ngo_class_id)
+
+    students = db.query(NGOStudent).filter(
+        NGOStudent.admin_id == admin.id,
+        NGOStudent.ngo_class_id == ngo_class_id,
+    ).order_by(NGOStudent.name, NGOStudent.id).all()
 
     return [
         {
             "id": student.id,
-            "student_id": student.roll_no,
+            "roll_no": student.roll_no,
             "name": student.name,
             "email": student.email,
             "phone_no": student.phone_no,
-            "active": True,
+            "ngo_class_id": student.ngo_class_id,
         }
         for student in students
     ]
@@ -173,49 +164,51 @@ def list_ngo_class_students(
 def save_ngo_attendance(
     payload: NGOAttendanceSaveRequest,
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    class_section = get_allowed_class(db, user_context, payload.class_section_id)
-    college_id = user_context["college_id"]
+    get_ngo_class(db, admin, payload.ngo_class_id)
 
-    students = db.query(Student).filter(
-        Student.college_id == college_id,
-        Student.class_section_id == class_section.id,
-        Student.id.in_([record.student_id for record in payload.records]),
+    student_ids = [record.student_id for record in payload.records]
+    students = db.query(NGOStudent).filter(
+        NGOStudent.admin_id == admin.id,
+        NGOStudent.ngo_class_id == payload.ngo_class_id,
+        NGOStudent.id.in_(student_ids),
     ).all()
-    student_ids = {student.id for student in students}
-    invalid_ids = sorted({record.student_id for record in payload.records} - student_ids)
+    valid_ids = {student.id for student in students}
+    invalid_ids = sorted(set(student_ids) - valid_ids)
+
     if invalid_ids:
-        raise HTTPException(400, f"Students not found in this class: {invalid_ids}")
+        raise HTTPException(400, f"Students not found in this NGO class: {invalid_ids}")
 
     saved = 0
     for record in payload.records:
         attendance = db.query(NGOAttendance).filter(
-            NGOAttendance.college_id == college_id,
+            NGOAttendance.admin_id == admin.id,
             NGOAttendance.student_id == record.student_id,
-            NGOAttendance.class_section_id == class_section.id,
+            NGOAttendance.ngo_class_id == payload.ngo_class_id,
             NGOAttendance.attendance_date == payload.attendance_date,
         ).first()
 
         if attendance is None:
             attendance = NGOAttendance(
-                college_id=college_id,
+                admin_id=admin.id,
                 student_id=record.student_id,
-                class_section_id=class_section.id,
+                ngo_class_id=payload.ngo_class_id,
                 attendance_date=payload.attendance_date,
+                marked_by_admin_id=admin.id,
             )
             db.add(attendance)
 
         attendance.status = record.status
-        attendance.marked_by_admin_id = user_context["user"].id if user_context["role"] == "admin" else None
-        attendance.marked_by_teacher_id = user_context["user"].id if user_context["role"] == "teacher" else None
+        attendance.marked_by_admin_id = admin.id
         saved += 1
 
     db.commit()
+
     return {
         "success": True,
-        "message": "Attendance saved successfully.",
-        "class_section_id": class_section.id,
+        "message": "NGO attendance saved successfully.",
+        "ngo_class_id": payload.ngo_class_id,
         "attendance_date": payload.attendance_date,
         "records_saved": saved,
     }
@@ -223,43 +216,48 @@ def save_ngo_attendance(
 
 @router.get("/attendance")
 def get_ngo_attendance(
-    class_section_id: int | None = Query(default=None),
+    ngo_class_id: int | None = Query(default=None),
     student_id: int | None = Query(default=None),
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
     if from_date and to_date and from_date > to_date:
         raise HTTPException(400, "from_date cannot be after to_date.")
 
-    query = db.query(NGOAttendance, Student).join(Student, Student.id == NGOAttendance.student_id).filter(
-        NGOAttendance.college_id == user_context["college_id"]
+    query = db.query(NGOAttendance, NGOStudent).join(
+        NGOStudent, NGOStudent.id == NGOAttendance.student_id
+    ).filter(
+        NGOAttendance.admin_id == admin.id
     )
 
-    if class_section_id is not None:
-        get_allowed_class(db, user_context, class_section_id)
-        query = query.filter(NGOAttendance.class_section_id == class_section_id)
-    elif user_context["role"] == "teacher":
-        assigned_ids = db.query(TeacherAssignment.class_section_id).filter(
-            TeacherAssignment.teacher_id == user_context["user"].id
-        ).subquery()
-        query = query.filter(NGOAttendance.class_section_id.in_(assigned_ids))
+    if ngo_class_id is not None:
+        get_ngo_class(db, admin, ngo_class_id)
+        query = query.filter(NGOAttendance.ngo_class_id == ngo_class_id)
 
     if student_id is not None:
-        query = query.filter(NGOAttendance.student_id == student_id)
+        query = query.filter(
+            NGOAttendance.student_id == student_id,
+            NGOStudent.admin_id == admin.id,
+        )
+
     if from_date:
         query = query.filter(NGOAttendance.attendance_date >= from_date)
     if to_date:
         query = query.filter(NGOAttendance.attendance_date <= to_date)
 
-    rows = query.order_by(NGOAttendance.attendance_date.desc(), Student.name).all()
+    rows = query.order_by(
+        NGOAttendance.attendance_date.desc(),
+        NGOStudent.name,
+    ).all()
+
     return [
         {
             "id": attendance.id,
             "student_id": student.id,
             "student_name": student.name,
-            "class_section_id": attendance.class_section_id,
+            "ngo_class_id": attendance.ngo_class_id,
             "attendance_date": attendance.attendance_date,
             "status": attendance.status,
         }
@@ -271,28 +269,26 @@ def get_ngo_attendance(
 def get_student_attendance_summary(
     student_id: int,
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    student = db.query(Student).filter(
-        Student.id == student_id,
-        Student.college_id == user_context["college_id"],
+    student = db.query(NGOStudent).filter(
+        NGOStudent.id == student_id,
+        NGOStudent.admin_id == admin.id,
     ).first()
     if student is None:
-        raise HTTPException(404, "Student not found.")
+        raise HTTPException(404, "NGO student not found.")
 
-    if student.class_section_id is None:
-        return {"student_id": student.id, "student_name": student.name, "total_classes": 0, "present": 0, "absent": 0, "percentage": 0}
-
-    get_allowed_class(db, user_context, student.class_section_id)
     total = db.query(func.count(NGOAttendance.id)).filter(
+        NGOAttendance.admin_id == admin.id,
         NGOAttendance.student_id == student.id,
-        NGOAttendance.college_id == user_context["college_id"],
     ).scalar() or 0
+
     present = db.query(func.count(NGOAttendance.id)).filter(
+        NGOAttendance.admin_id == admin.id,
         NGOAttendance.student_id == student.id,
-        NGOAttendance.college_id == user_context["college_id"],
         NGOAttendance.status == "Present",
     ).scalar() or 0
+
     absent = total - present
     percentage = round((present / total) * 100, 2) if total else 0
 
@@ -306,28 +302,31 @@ def get_student_attendance_summary(
     }
 
 
-@router.get("/classes/{class_section_id}/attendance-summary")
+@router.get("/classes/{ngo_class_id}/attendance-summary")
 def get_class_attendance_summary(
-    class_section_id: int,
+    ngo_class_id: int,
     db: Session = Depends(get_db),
-    user_context: dict = Depends(get_current_ngo_user),
+    admin: Admin = Depends(get_current_admin),
 ):
-    class_section = get_allowed_class(db, user_context, class_section_id)
+    ngo_class = get_ngo_class(db, admin, ngo_class_id)
+
     total = db.query(func.count(NGOAttendance.id)).filter(
-        NGOAttendance.college_id == user_context["college_id"],
-        NGOAttendance.class_section_id == class_section.id,
+        NGOAttendance.admin_id == admin.id,
+        NGOAttendance.ngo_class_id == ngo_class.id,
     ).scalar() or 0
+
     present = db.query(func.count(NGOAttendance.id)).filter(
-        NGOAttendance.college_id == user_context["college_id"],
-        NGOAttendance.class_section_id == class_section.id,
+        NGOAttendance.admin_id == admin.id,
+        NGOAttendance.ngo_class_id == ngo_class.id,
         NGOAttendance.status == "Present",
     ).scalar() or 0
+
     absent = total - present
     percentage = round((present / total) * 100, 2) if total else 0
 
     return {
-        "class_section_id": class_section.id,
-        "class_name": f"{class_section.class_name} - {class_section.section}",
+        "ngo_class_id": ngo_class.id,
+        "class_name": f"{ngo_class.class_name} - {ngo_class.section}",
         "total_attendance_records": total,
         "present": present,
         "absent": absent,
