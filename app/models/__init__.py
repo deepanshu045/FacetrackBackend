@@ -12,3 +12,6 @@ from app.models.class_section import ClassSection
 from app.models.teacher import Teacher, TeacherAssignment
 
 from app.models.ngo_attendance import NGOAttendance
+
+from app.models.ngo_class import NGOClass
+from app.models.ngo_student import NGOStudent
